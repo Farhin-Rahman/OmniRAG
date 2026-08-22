@@ -1,0 +1,9 @@
+ruff
+pytest
+httpx
+requests>=2.31.0
+
+# Evaluation Pipeline Dependencies
+# (also available in eval/requirements.txt for standalone installation)
+mlflow>=2.9.0
+# LLM evaluation uses REST API v1 directly (requests already included above)

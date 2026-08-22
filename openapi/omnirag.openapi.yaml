@@ -1,0 +1,735 @@
+info:
+  license:
+    url: https://opensource.org/license/mit/
+    name: MIT
+    identifier: MIT
+  title: OmniRAG API
+  description: API for OmniRAG - a modular RAG system with free-first architecture
+  version: 0.1.0
+security:
+- bearerAuth: []
+openapi: 3.1.0
+components:
+  responses:
+    Forbidden:
+      content:
+        application/problem+json:
+          example:
+            details:
+              reason: Insufficient permissions for this tenant
+            type: https://api.example.com/problems/forbidden
+            trace_id: 550e8400-e29b-41d4-a716-446655440002
+            title: Forbidden
+            code: FORBIDDEN
+            status: 403
+          schema:
+            $ref: '#/components/schemas/Problem'
+      description: Forbidden
+    Unauthorized:
+      content:
+        application/problem+json:
+          example:
+            details:
+              reason: Invalid or missing bearer token
+            type: https://api.example.com/problems/unauthorized
+            trace_id: 550e8400-e29b-41d4-a716-446655440001
+            title: Unauthorized
+            code: UNAUTHORIZED
+            status: 401
+          schema:
+            $ref: '#/components/schemas/Problem'
+      description: Unauthorized
+    TooManyRequests:
+      content:
+        application/problem+json:
+          example:
+            details:
+              retry_after: 45
+              limit: 100
+              window: 60
+            type: https://api.example.com/problems/rate-limit
+            trace_id: 550e8400-e29b-41d4-a716-446655440005
+            title: Too Many Requests
+            code: RATE_LIMIT_EXCEEDED
+            status: 429
+          schema:
+            $ref: '#/components/schemas/Problem'
+      description: Too Many Requests
+    BadRequest:
+      content:
+        application/problem+json:
+          example:
+            details:
+              field: q
+              reason: Query parameter is required
+            type: https://api.example.com/problems/bad-request
+            trace_id: 550e8400-e29b-41d4-a716-446655440000
+            title: Bad Request
+            code: BAD_REQUEST
+            status: 400
+          schema:
+            $ref: '#/components/schemas/Problem'
+      description: Bad Request
+    InternalServerError:
+      content:
+        application/problem+json:
+          example:
+            details:
+              message: An unexpected error occurred
+            type: https://api.example.com/problems/internal-error
+            trace_id: 550e8400-e29b-41d4-a716-446655440006
+            title: Internal Server Error
+            code: INTERNAL_ERROR
+            status: 500
+          schema:
+            $ref: '#/components/schemas/Problem'
+      description: Internal Server Error
+    NotFound:
+      content:
+        application/problem+json:
+          example:
+            details:
+              resource: document
+              id: 550e8400-e29b-41d4-a716-446655440099
+            type: https://api.example.com/problems/not-found
+            trace_id: 550e8400-e29b-41d4-a716-446655440003
+            title: Not Found
+            code: NOT_FOUND
+            status: 404
+          schema:
+            $ref: '#/components/schemas/Problem'
+      description: Not Found
+    UnprocessableEntity:
+      content:
+        application/problem+json:
+          example:
+            details:
+              errors:
+              - field: k
+                message: Must be between 1 and 100
+            type: https://api.example.com/problems/unprocessable-entity
+            trace_id: 550e8400-e29b-41d4-a716-446655440004
+            title: Unprocessable Entity
+            code: VALIDATION_ERROR
+            status: 422
+          schema:
+            $ref: '#/components/schemas/Problem'
+      description: Unprocessable Entity
+  securitySchemes:
+    bearerAuth:
+      scheme: bearer
+      description: JWT bearer token
+      type: http
+      bearerFormat: JWT
+  schemas:
+    Document:
+      properties:
+        doc_type:
+          type: string
+        version:
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        embedding_id:
+          type: string
+        ingest_run_id:
+          format: uuid
+          type: string
+        tenant_id:
+          format: uuid
+          type: string
+        doc_id:
+          format: uuid
+          type: string
+        source_uri:
+          type: string
+        doc_name:
+          type: string
+        status:
+          enum:
+          - queued
+          - processing
+          - ready
+          - error
+          type: string
+        sha256:
+          type: string
+        mime:
+          type: string
+        pages:
+          type: integer
+      type: object
+      required:
+      - doc_id
+      - sha256
+      - mime
+      - pages
+      - source_uri
+      - doc_name
+      - ingest_run_id
+      - doc_type
+      - status
+      - version
+      - created_at
+      - tenant_id
+      - embedding_id
+    RetrievalResult:
+      properties:
+        citation_spans:
+          items:
+            properties:
+              evidence_id:
+                type: string
+              chunk_span:
+                minItems: 2
+                items:
+                  type: integer
+                type: array
+                maxItems: 2
+              page:
+                type: integer
+            type: object
+          type: array
+        filters:
+          type: object
+        retrieval_plan:
+          properties:
+            dense:
+              type: boolean
+            graph_hops:
+              type: integer
+            sparse:
+              type: boolean
+          type: object
+        chunk_id:
+          format: uuid
+          type: string
+        rerank_score:
+          type: number
+        score:
+          type: number
+        query_id:
+          format: uuid
+          type: string
+      type: object
+      required:
+      - query_id
+      - chunk_id
+      - score
+      - rerank_score
+      - citation_spans
+      - filters
+      - retrieval_plan
+    Answer:
+      properties:
+        confidence:
+          type: number
+        support:
+          properties:
+            entities:
+              items:
+                type: string
+              type: array
+            relations:
+              items:
+                properties:
+                  weight:
+                    type: number
+                  type:
+                    type: string
+                  rel_id:
+                    type: string
+                type: object
+              type: array
+          type: object
+        citations:
+          items:
+            properties:
+              doc_id:
+                format: uuid
+                type: string
+              chunk_id:
+                format: uuid
+                type: string
+              span:
+                minItems: 2
+                items:
+                  type: integer
+                type: array
+                maxItems: 2
+              page:
+                type: integer
+              evidence_id:
+                type: string
+            type: object
+          type: array
+        text:
+          type: string
+      type: object
+      required:
+      - text
+      - citations
+      - support
+      - confidence
+    QueryResponse:
+      properties:
+        retrieval:
+          properties:
+            dense:
+              type: boolean
+            graph_hops:
+              type: integer
+            sparse:
+              type: boolean
+          type: object
+        answers:
+          items:
+            $ref: '#/components/schemas/Answer'
+          type: array
+        trace_id:
+          format: uuid
+          type: string
+        retrieval_details:
+          $ref: '#/components/schemas/RetrievalResult'
+        query_id:
+          format: uuid
+          type: string
+      type: object
+      required:
+      - query_id
+      - answers
+      - retrieval
+      - trace_id
+    QueryRequest:
+      properties:
+        filters:
+          type: object
+        q:
+          type: string
+        require_citations:
+          default: true
+          type: boolean
+        k:
+          default: 10
+          type: integer
+        rerank:
+          default: false
+          type: boolean
+        graph:
+          properties:
+            seed_entities:
+              items:
+                type: string
+              type: array
+            hops:
+              type: integer
+            rel_types:
+              items:
+                type: string
+              type: array
+          type: object
+      type: object
+      required:
+      - q
+    Problem:
+      properties:
+        details:
+          description: Additional problem-specific details
+          type: object
+        type:
+          format: uri
+          description: URI reference identifying the problem type
+          type: string
+        trace_id:
+          description: Request trace identifier
+          type: string
+        title:
+          description: Short, human-readable summary
+          type: string
+        code:
+          description: Application-specific error code
+          type: string
+        status:
+          description: HTTP status code
+          type: integer
+      type: object
+      required:
+      - type
+      - title
+      - status
+    HealthResponse:
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+        git_sha:
+          type: string
+      type: object
+      required:
+      - status
+      - version
+      - git_sha
+    Trace:
+      properties:
+        steps:
+          items:
+            properties:
+              start_node_ids:
+                items:
+                  type: string
+                type: array
+              lat_ms:
+                type: integer
+              step:
+                type: string
+              hops:
+                type: integer
+              t:
+                format: date-time
+                type: string
+              k:
+                type: integer
+              model:
+                type: string
+            type: object
+          type: array
+        version:
+          type: integer
+        agent_plan:
+          type: object
+        trace_id:
+          format: uuid
+          type: string
+        citations:
+          items:
+            properties:
+              chunk_id:
+                format: uuid
+                type: string
+              sentence_ix:
+                type: integer
+              page:
+                type: integer
+              span:
+                minItems: 2
+                items:
+                  type: integer
+                type: array
+                maxItems: 2
+            type: object
+          type: array
+        query_id:
+          format: uuid
+          type: string
+        tools_used:
+          items:
+            type: string
+          type: array
+      type: object
+      required:
+      - trace_id
+      - query_id
+      - steps
+      - tools_used
+      - citations
+      - agent_plan
+      - version
+servers:
+- url: https://api.omnirag.local
+  description: Production (placeholder)
+- url: https://staging.api.omnirag.dev
+  description: Local development
+paths:
+  /traces/{trace_id}:
+    get:
+      parameters:
+      - name: trace_id
+        in: path
+        schema:
+          format: uuid
+          type: string
+        required: true
+      summary: Get trace by ID
+      responses:
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "200":
+          content:
+            application/json:
+              example:
+                steps:
+                - start_node_ids: []
+                  lat_ms: 45
+                  step: dense_retrieval
+                  hops: 0
+                  t: 2025-10-17T12:00:00.100Z
+                  k: 10
+                  model: nomic-embed-text-v1.5
+                - start_node_ids:
+                  - entity_123
+                  - entity_456
+                  lat_ms: 78
+                  step: graph_expansion
+                  hops: 2
+                  t: 2025-10-17T12:00:00.200Z
+                  k: 5
+                  model: ""
+                - start_node_ids: []
+                  lat_ms: 120
+                  step: rerank
+                  hops: 0
+                  t: 2025-10-17T12:00:00.500Z
+                  k: 5
+                  model: cross-encoder
+                - start_node_ids: []
+                  lat_ms: 650
+                  step: answer_generation
+                  hops: 0
+                  t: 2025-10-17T12:00:01.200Z
+                  k: 0
+                  model: llama-3.1-8b
+                version: 1
+                agent_plan:
+                  use_graph: true
+                  rerank_enabled: true
+                  strategy: hybrid_rag
+                trace_id: 550e8400-e29b-41d4-a716-446655440021
+                citations:
+                - chunk_id: 550e8400-e29b-41d4-a716-446655440030
+                  sentence_ix: 0
+                  page: 5
+                  span:
+                  - 120
+                  - 245
+                - chunk_id: 550e8400-e29b-41d4-a716-446655440031
+                  sentence_ix: 1
+                  page: 7
+                  span:
+                  - 80
+                  - 180
+                query_id: 550e8400-e29b-41d4-a716-446655440020
+                tools_used:
+                - dense_retriever
+                - graph_expander
+                - reranker
+                - llm_generator
+              schema:
+                $ref: '#/components/schemas/Trace'
+          description: Trace found
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+      operationId: getTrace
+      tags:
+      - Observability
+  /ingest:
+    post:
+      parameters:
+      summary: Ingest a document
+      responses:
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "201":
+          content:
+            application/json:
+              example:
+                doc_type: pdf
+                version: 1
+                created_at: 2025-10-17T12:00:00Z
+                embedding_id: nomic-embed-text-v1.5
+                ingest_run_id: 550e8400-e29b-41d4-a716-446655440011
+                tenant_id: 550e8400-e29b-41d4-a716-446655440012
+                doc_id: 550e8400-e29b-41d4-a716-446655440010
+                source_uri: upload://file.pdf
+                doc_name: Research Paper.pdf
+                status: queued
+                sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+                mime: application/pdf
+                pages: 0
+              schema:
+                $ref: '#/components/schemas/Document'
+          description: Document queued for ingestion
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                source_uri:
+                  type: string
+                doc_type:
+                  type: string
+                doc_name:
+                  type: string
+                file:
+                  format: binary
+                  type: string
+              type: object
+              required:
+              - file
+            encoding:
+              file:
+                contentType: application/pdf
+              metadata:
+                contentType: application/json
+        required: true
+      operationId: ingestDocument
+      tags:
+      - Documents
+  /query:
+    post:
+      parameters:
+      summary: Query documents with RAG
+      responses:
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "200":
+          content:
+            application/json:
+              example:
+                retrieval:
+                  dense: true
+                  graph_hops: 2
+                  sparse: true
+                answers:
+                - confidence: 0.89
+                  support:
+                    entities:
+                    - climate change
+                    - global temperatures
+                    - ice sheet melting
+                    relations:
+                    - weight: 0.92
+                      type: causes
+                      rel_id: rel_001
+                  citations:
+                  - doc_id: 550e8400-e29b-41d4-a716-446655440010
+                    chunk_id: 550e8400-e29b-41d4-a716-446655440030
+                    span:
+                    - 120
+                    - 245
+                    page: 5
+                    evidence_id: ev_001
+                  - doc_id: 550e8400-e29b-41d4-a716-446655440010
+                    chunk_id: 550e8400-e29b-41d4-a716-446655440031
+                    span:
+                    - 80
+                    - 180
+                    page: 7
+                    evidence_id: ev_002
+                  text: Climate change has led to a 1.5Â°C increase in global temperatures since pre-industrial times. This warming has resulted in accelerated ice sheet melting and rising sea levels.
+                query_id: 550e8400-e29b-41d4-a716-446655440020
+                trace_id: 550e8400-e29b-41d4-a716-446655440021
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+          description: Query successful
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+      requestBody:
+        content:
+          application/json:
+            example:
+              q: What are the main findings about climate change impacts?
+              require_citations: true
+              k: 5
+              filters:
+                doc_type: pdf
+                created_after: 2024-01-01
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+        required: true
+      operationId: queryDocuments
+      tags:
+      - Query
+  /healthz:
+    get:
+      summary: Health check endpoint
+      responses:
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          description: Rate limited
+        "200":
+          content:
+            application/json:
+              example:
+                status: ok
+                version: 0.1.0
+                git_sha: abc123def456
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+          description: Service is healthy
+      security: []
+      operationId: getHealth
+      tags:
+      - System
+  /documents/{doc_id}:
+    get:
+      parameters:
+      - name: doc_id
+        in: path
+        schema:
+          format: uuid
+          type: string
+        required: true
+      summary: Get document by ID
+      responses:
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "200":
+          content:
+            application/json:
+              example:
+                doc_type: pdf
+                version: 1
+                created_at: 2025-10-17T12:00:00Z
+                embedding_id: nomic-embed-text-v1.5
+                ingest_run_id: 550e8400-e29b-41d4-a716-446655440011
+                tenant_id: 550e8400-e29b-41d4-a716-446655440012
+                doc_id: 550e8400-e29b-41d4-a716-446655440010
+                source_uri: upload://file.pdf
+                doc_name: Research Paper.pdf
+                status: ready
+                sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+                mime: application/pdf
+                pages: 42
+              schema:
+                $ref: '#/components/schemas/Document'
+          description: Document found
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+      operationId: getDocument
+      tags:
+      - Documents

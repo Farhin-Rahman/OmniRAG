@@ -1,0 +1,22 @@
+{
+  "name": "omnirag",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "api:validate": "npx --yes @redocly/cli@latest lint openapi/omnirag.openapi.yaml",
+    "api:mock": "npx --yes @stoplight/prism-cli@5 mock -p 4010 openapi/omnirag.openapi.yaml",
+    "api:fuzz": ".\\\\.venv\\\\Scripts\\\\schemathesis.exe run openapi/omnirag.openapi.yaml --base-url=http://127.0.0.1:4010 --checks=all",
+    "api:types": "npx --yes openapi-typescript openapi/omnirag.openapi.yaml -o shared/contracts/omnirag.openapi.d.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1"
+  }
+}

@@ -1,0 +1,19 @@
+﻿{
+    "name":  "omnirag-api-contracts",
+    "version":  "0.1.0",
+    "description":  "OpenAPI contracts for OmniRAG system",
+    "scripts":  {
+                    "api:validate":  "npx --yes @redocly/cli@latest lint openapi/omnirag.openapi.yaml",
+                    "api:mock":  "npx --yes @stoplight/prism-cli@5 mock -p 4010 openapi/omnirag.openapi.yaml",
+                    "api:fuzz":  "pipx run schemathesis run --checks=all openapi/omnirag.openapi.yaml -E openapi"
+                },
+    "keywords":  [
+                     "openapi",
+                     "api",
+                     "rag",
+                     "contracts",
+                     "omnirag"
+                 ],
+    "author":  "",
+    "license":  "MIT"
+}

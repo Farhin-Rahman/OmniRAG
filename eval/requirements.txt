@@ -1,0 +1,20 @@
+# ============================================
+# OmniRAG Evaluation Pipeline Dependencies
+# ============================================
+# This file is for standalone installation of the eval package.
+# For development within the OmniRAG project, use:
+#   pip install -r backend/requirements-dev.txt
+
+# Core dependencies
+pydantic>=2.0.0
+httpx>=0.25.0
+requests>=2.31.0
+
+# MLflow for experiment tracking
+mlflow>=2.9.0
+
+# LLM evaluation - Uses REST API v1 directly (industry standard, stable, no package issues)
+# requests is already in core dependencies above
+
+# Optional: For testing
+# pytest>=7.0.0
