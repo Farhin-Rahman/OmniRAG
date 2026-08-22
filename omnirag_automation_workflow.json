@@ -1,0 +1,60 @@
+{
+  "name": "OmniRAG Auto-Ingestion Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "omnirag-trigger",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "2bc84f6c-8e8e-4a6f-a89a-cf2a912d08a5",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [ 250, 300 ],
+      "webhookId": "omnirag-trigger-12345"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8081/api/webhooks/ingest-url",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.body.pdf_url }}\",\n  \"doc_name\": \"Confidential_Document.pdf\"\n}",
+        "options": {}
+      },
+      "id": "787bb378-31a8-43f1-83b5-f6b83ffea480",
+      "name": "Send to OmniRAG Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 450, 300 ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send to OmniRAG Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

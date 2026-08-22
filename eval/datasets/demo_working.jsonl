@@ -1,0 +1,12 @@
+﻿{"id": "policy-en-001", "query": "What is the organization's user policy?", "golden_docs": ["User Policies- سياسات المستخدم"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["policy", "en", "easy"]}
+{"id": "policy-en-002", "query": "What are the guidelines for acceptable use of company systems?", "golden_docs": ["سياسة الاستخدام المقبول - Acceptable Use Policy"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["policy", "en", "easy"]}
+{"id": "policy-en-003", "query": "What restrictions exist in the user policy regarding data handling?", "golden_docs": ["User Policies- سياسات المستخدم"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["policy", "en", "medium"]}
+{"id": "policy-ar-001", "query": "ما هي سياسة المستخدم في المنظمة؟", "golden_docs": ["User Policies- سياسات المستخدم"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["policy", "ar", "easy"]}
+{"id": "policy-ar-002", "query": "ما هي سياسة الاستخدام المقبول؟", "golden_docs": ["سياسة الاستخدام المقبول - Acceptable Use Policy"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["policy", "ar", "easy"]}
+{"id": "policy-ar-003", "query": "ما هي القيود المفروضة على استخدام أنظمة الشركة؟", "golden_docs": ["User Policies- سياسات المستخدم", "سياسة الاستخدام المقبول - Acceptable Use Policy"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["policy", "ar", "medium"]}
+{"id": "firewall-001", "query": "What are the firewall specifications in the purchase order?", "golden_docs": ["4100000645-Khedmat- Firewall"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["procurement", "en", "easy"]}
+{"id": "firewall-002", "query": "What is the total price with VAT for the firewall purchase?", "golden_docs": ["4100000645-Khedmat- Firewall"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["procurement", "en", "medium"]}
+{"id": "quote-001", "query": "What is the total amount in quotation QT-000900?", "golden_docs": ["QT-000900"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["quotation", "en", "easy"]}
+{"id": "quote-002", "query": "What items are included in the QT-000900 quote?", "golden_docs": ["QT-000900"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["quotation", "en", "medium"]}
+{"id": "info-001", "query": "What is the INFO report about?", "golden_docs": ["INFO_2025_Apr_1", "INFO_2025_Apr_2", "INFO_2025_Apr_3"], "tenant_id": "00000000-0000-0000-0000-000000000000", "tags": ["general", "en", "medium"]}
+

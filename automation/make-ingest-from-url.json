@@ -1,0 +1,80 @@
+{
+  "name": "OmniRAG — Ingest Document from URL",
+  "description": "When a new file URL is available (e.g. from Google Drive, Dropbox, or any trigger), send it to OmniRAG for RAG indexing.",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 1,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0 },
+        "restore": { "parameters": { "hook": { "label": "Receive file URL" } } }
+      },
+      "note": "Trigger: Receives a payload with { url, doc_name } from any upstream system"
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "http://localhost:8081/api/webhooks/ingest-url",
+        "serializeUrl": false,
+        "method": "POST",
+        "headers": [
+          { "name": "Content-Type", "value": "application/json" },
+          { "name": "X-Webhook-Secret", "value": "{{your-webhook-secret}}" }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "{\"url\": \"{{1.url}}\", \"doc_name\": \"{{1.doc_name}}\", \"tenant_id\": \"{{your-tenant-uuid}}\"}",
+        "parseResponse": true
+      },
+      "metadata": {
+        "designer": { "x": 300, "y": 0 },
+        "restore": { "expect": { "method": { "label": "POST" } } }
+      },
+      "note": "Action: POST to OmniRAG webhook — file is downloaded and queued for RAG ingestion"
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicFeeder",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "[{\"doc_id\": \"{{2.doc_id}}\", \"status\": \"{{2.status}}\", \"doc_name\": \"{{2.doc_name}}\"}]"
+      },
+      "metadata": {
+        "designer": { "x": 600, "y": 0 }
+      },
+      "note": "Output: { doc_id, status: 'queued', doc_name } — use doc_id to track ingestion status"
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "slots": null,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com"
+  }
+}

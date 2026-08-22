@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnirag-backend"
+version = "0.1.0"
+description = "OmniRAG backend service"
+requires-python = ">=3.11,<3.12"
+
+dependencies = [
+    # Core Framework
+    "python-dotenv",
+    "pydantic[email]",
+    "pydantic-settings",
+    "pyyaml",
+    
+    # Web Framework
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+
+    # Database & ORM
+    "sqlalchemy",
+    "alembic",
+    "qdrant-client",
+
+    # Document Processing
+    "pypdf",
+    "python-docx",
+    "docx2txt",
+    "PyMuPDF",
+
+    # Text Processing
+    "langdetect>=1.0.9",
+
+    # HTTP Client
+    "httpx",
+    "requests",
+    "numpy",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "pytest",
+    "httpx",
+]
+
+ci = [
+    "pytest",
+    "httpx",
+    "ruff",
+    "python-dotenv",
+    "pydantic",
+    "pydantic-settings",
+    "pyyaml",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "sqlalchemy",
+    "alembic",
+    "qdrant-client",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*"]

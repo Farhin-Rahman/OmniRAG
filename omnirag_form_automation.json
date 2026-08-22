@@ -1,0 +1,88 @@
+{
+  "name": "OmniRAG Form Upload Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "omnirag-upload",
+        "formTitle": "OmniRAG Document Uploader",
+        "formDescription": "Upload a document to automatically ingest it into the AI memory.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Document",
+              "fieldType": "file",
+              "requiredField": true,
+              "acceptFileTypes": ".pdf,.docx,.txt"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "form-trigger-1",
+      "name": "n8n Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [ 200, 300 ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const newItems = [];\nfor (const item of $input.all()) {\n  const binaryKeys = Object.keys(item.binary || {});\n  if (binaryKeys.length > 0) {\n    const firstKey = binaryKeys[0];\n    item.binary = { data: item.binary[firstKey] };\n  }\n  newItems.push(item);\n}\nreturn newItems;"
+      },
+      "id": "code-rename",
+      "name": "Normalize File Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 400, 300 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8080/api/webhooks/upload-file",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "parameterType": "form-data-binary"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-request-1",
+      "name": "Send to OmniRAG Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 600, 300 ]
+    }
+  ],
+  "connections": {
+    "n8n Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize File Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize File Name": {
+      "main": [
+        [
+          {
+            "node": "Send to OmniRAG Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

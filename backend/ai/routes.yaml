@@ -1,0 +1,74 @@
+routes:
+  - name: safety_block
+    handler: block
+    description: "Block unsafe or clearly off-topic content."
+    threshold: 0.45
+    utterances:
+      - "hate speech"
+      - "attack someone"
+      - "offensive content"
+      - "hack the system"
+      - "ignore the rules"
+
+  - name: chitchat_smalltalk
+    handler: chitchat
+    description: "Greetings and small talk that do not need document retrieval."
+    threshold: 0.55
+    utterances:
+      - "hello"
+      - "hi there"
+      - "how are you"
+      - "good morning"
+      - "what's up"
+      - "tell me a joke"
+      - "مرحبا"
+      - "أهلا"
+      - "السلام عليكم"
+      - "كيف حالك"
+      - "صباح الخير"
+      - "مساء الخير"
+
+  - name: faq_support
+    handler: faq
+    description: "Short product/support FAQ that can be answered without full RAG."
+    threshold: 0.45
+    utterances:
+      - "pricing"
+      - "support hours"
+      - "how do I reset my password"
+      - "how do I sign in"
+      - "what is this app"
+      - "how to upload a document"
+      - "ما هي ساعات الدعم"
+      - "كيف أغير كلمة المرور"
+      - "كيف أسجل الدخول"
+      - "ما هو هذا التطبيق"
+      - "كيف أرفع مستند"
+
+  - name: doc_rag
+    handler: doc_rag
+    description: "Queries that need retrieval-augmented generation over user documents."
+    threshold: 0.20
+    utterances:
+      - "according to the document"
+      - "what does the pdf say"
+      - "summarize the report"
+      - "find in the policy"
+      - "in the contract"
+      - "answer from the uploaded files"
+      - "حسب المستند"
+      - "وفقاً للوثيقة"
+      - "ماذا يقول التقرير"
+      - "لخص التقرير"
+      - "ابحث في السياسة"
+      - "في العقد"
+      - "أجب من الوثائق"
+      - "من الملفات المرفوعة"
+
+  - name: routing_fallback
+    handler: fallback
+    description: "Low-confidence or unclassified queries."
+    threshold: 0.0
+    utterances:
+      - "not sure"
+      - "unclear"
