@@ -59,7 +59,21 @@ export interface Source {
   page: number;
   score: number;
   personalization_score: number;
-  metadata: any;
+  metadata: Record<string, unknown>;
+}
+
+export interface DocumentStatusFile {
+  item_id: string;
+  fileName: string;
+  filestatus: string;
+  filepath: string;
+  doc_id?: string;
+}
+
+interface RawDocumentRecord {
+  doc_id: string;
+  doc_name: string;
+  status: string;
 }
 
 export interface ModerationQueueItem {
@@ -131,7 +145,7 @@ class ApiClient {
   }
 
   // --- Document File Helpers (Real Backend) ---
-  async uploadFile(file: File): Promise<ApiResponse<any>> {
+  async uploadFile(file: File): Promise<ApiResponse<{ doc_id: string; status: string; doc_name: string }>> {
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -172,13 +186,13 @@ class ApiClient {
   }
 
   // --- Document Sync ---
-  async getDocumentStatus(folderPath?: string, minDate?: string): Promise<ApiResponse<{ is_syncing: boolean; files: any[] }>> {
+  async getDocumentStatus(folderPath?: string, minDate?: string): Promise<ApiResponse<{ is_syncing: boolean; files: DocumentStatusFile[] }>> {
     try {
       const response = await fetch(`${API_BASE_URL}/documents`);
       if (!response.ok) throw new Error("Failed to fetch documents");
       const data = await response.json();
-      
-      const mappedFiles = (data.documents || []).map((doc: any) => ({
+
+      const mappedFiles: DocumentStatusFile[] = (data.documents || []).map((doc: RawDocumentRecord) => ({
         item_id: doc.doc_id,
         fileName: doc.doc_name,
         filestatus: doc.status,
@@ -196,7 +210,7 @@ class ApiClient {
     }
   }
 
-  async triggerDocumentSync(): Promise<ApiResponse<{ is_syncing: boolean; files: any[] }>> {
+  async triggerDocumentSync(): Promise<ApiResponse<{ is_syncing: boolean; files: DocumentStatusFile[] }>> {
     return { data: { is_syncing: true, files: [] } };
   }
 
@@ -417,7 +431,7 @@ class ApiClient {
     return { data: msg };
   }
 
-  async rerunSession(sessionId: string, conversationId?: string): Promise<ApiResponse<any>> {
+  async rerunSession(sessionId: string, conversationId?: string): Promise<ApiResponse<{ session_id: string; conversation_id: string; new_run_id: string; message: string }>> {
     return { data: { session_id: sessionId, conversation_id: conversationId || uuidv4(), new_run_id: uuidv4(), message: "Rerun triggered" } };
   }
 

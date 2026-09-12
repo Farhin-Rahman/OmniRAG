@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiClient as api, onSessionExpired } from '@/lib/api-client';
+import { apiClient as api, onSessionExpired, type DocumentStatusFile } from '@/lib/api-client';
+
+interface DocumentStatus {
+    is_syncing: boolean;
+    files: DocumentStatusFile[];
+}
 import { Button } from '@/components/ui/button';
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,7 +22,7 @@ const glassContainer = "min-h-screen bg-slate-950 bg-[radial-gradient(ellipse_at
 
 export default function DocumentIngestion() {
     const navigate = useNavigate();
-    const [status, setStatus] = useState<any>(null);
+    const [status, setStatus] = useState<DocumentStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [viewingDoc, setViewingDoc] = useState<{ docId: string; docName: string } | null>(null);
@@ -61,8 +66,8 @@ export default function DocumentIngestion() {
 
     const handleSyncBatch = async () => {
         const itemIds = files
-            .map((f: any) => f.item_id)
-            .filter((id: any) => id); // Filter out null/undefined item_ids
+            .map((f: DocumentStatusFile) => f.item_id)
+            .filter((id: string) => id); // Filter out null/undefined item_ids
 
         if (itemIds.length === 0) {
             toast.error("No files listed to sync");
@@ -105,7 +110,7 @@ export default function DocumentIngestion() {
             toast.success(`Successfully uploaded ${file.name}`);
             
             // Add a mock file to the list to show it locally
-            setStatus((prev: any) => ({
+            setStatus((prev) => ({
                 ...prev,
                 files: [
                     { 
@@ -160,11 +165,11 @@ export default function DocumentIngestion() {
 
     // Counts
     const files = status?.files || [];
-    const readyCount = files.filter((f: any) => f.filestatus === 'ready').length;
-    const processingCount = files.filter((f: any) => f.filestatus === 'processing').length;
-    const queuedCount = files.filter((f: any) => ['queued', 'pending'].includes(f.filestatus)).length;
-    const errorCount = files.filter((f: any) => f.filestatus === 'error').length;
-    const unsyncedCount = files.filter((f: any) => f.filestatus === 'not_synced').length;
+    const readyCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'ready').length;
+    const processingCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'processing').length;
+    const queuedCount = files.filter((f: DocumentStatusFile) => ['queued', 'pending'].includes(f.filestatus)).length;
+    const errorCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'error').length;
+    const unsyncedCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'not_synced').length;
 
     return (
         <div className={glassContainer}>
@@ -334,7 +339,7 @@ export default function DocumentIngestion() {
                         ) : (
                             <div className="w-full">
                                 <div className="grid grid-cols-1 gap-3 w-full max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                                    {files.map((file: any, i: number) => (
+                                    {files.map((file: DocumentStatusFile, i: number) => (
                                         <div
                                             key={i}
                                             className={`flex items-center justify-between p-4 bg-white/[0.03] hover:bg-white/[0.08] rounded-xl transition-all duration-300 border border-white/5 hover:border-indigo-500/30 shadow-sm group cursor-pointer ${file.filestatus === 'not_synced' ? 'opacity-50 hover:opacity-100' : ''}`}
