@@ -11,9 +11,12 @@ pyyaml
 # Web Framework
 fastapi
 uvicorn
+websockets
 python-multipart
 pyjwt
 passlib[bcrypt]
+firebase-admin
+langgraph
 
 # Database & ORM
 sqlalchemy

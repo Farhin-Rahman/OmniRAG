@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     Index,
@@ -55,7 +54,7 @@ class Document(Base):
     # Ingestion tracking
     ingest_run_id = Column(UUID(), nullable=False, index=True)
     status = Column(
-        String(20), # "queued", "processing", "ready", "error"
+        String(20),  # "queued", "processing", "ready", "error"
         nullable=False,
         default="queued",
         index=True,
@@ -77,7 +76,10 @@ class Document(Base):
     )
 
     __table_args__ = (
-        Index("ix_documents_status", "status"),
+        # No explicit Index("ix_documents_status", ...) here: the `status`
+        # Column above already has index=True, which SQLAlchemy auto-names
+        # ix_documents_status. Declaring both collided on create_all()
+        # ("index ix_documents_status already exists").
         UniqueConstraint("sha256", name="uq_document_sha256"),
     )
 
@@ -128,9 +130,9 @@ class Chunk(Base):
     # Relationships
     document = relationship("Document", back_populates="chunks")
 
-    __table_args__ = (
-        Index("ix_chunks_doc_page", "doc_id", "page"),
-    )
+    __table_args__ = (Index("ix_chunks_doc_page", "doc_id", "page"),)
 
     def __repr__(self):
-        return f"<Chunk(chunk_id={self.chunk_id}, doc_id={self.doc_id}, page={self.page})>"
+        return (
+            f"<Chunk(chunk_id={self.chunk_id}, doc_id={self.doc_id}, page={self.page})>"
+        )

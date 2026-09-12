@@ -6,11 +6,12 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { MouseEvent, KeyboardEvent } from "react";
-import { MessageSquarePlus, Trash2, MoreVertical, LogOut, Check, X, RefreshCw, Plus, MessageSquare, ChevronLeft, ChevronRight, Folder, Webhook } from "lucide-react";
+import { MessageSquarePlus, Trash2, MoreVertical, LogOut, Check, X, RefreshCw, Plus, MessageSquare, ChevronLeft, ChevronRight, Folder, Webhook, Phone, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiClient, type Conversation, type User, onSessionExpired } from "@/lib/api-client";
+import { useAuthClaims } from "@/auth/AuthProvider";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -62,6 +63,7 @@ const ChatSidebar = ({
   const consecutiveErrorsRef = useRef(0);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { isAdmin } = useAuthClaims();
 
   // Handle session expiry
   useEffect(() => {
@@ -523,9 +525,26 @@ const ChatSidebar = ({
             </div>
             <div className="min-w-0 text-left">
               <p className="text-sm font-medium truncate">{displayName}</p>
-              <p className="text-xs text-muted-foreground">View profile</p>
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                View profile
+                {isAdmin && (
+                  <span className="shrink-0 rounded-full bg-emerald-600/10 text-emerald-600 text-[10px] font-medium px-2 py-0.5 border border-emerald-600/20">
+                    Admin
+                  </span>
+                )}
+              </p>
             </div>
           </button>
+
+          {isAdmin && (
+            <Button
+              onClick={() => window.location.href = '/moderation'}
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white shadow-md hover:shadow-lg transition-all transform active:scale-95 rounded-xl h-12 flex items-center justify-center gap-2"
+            >
+              <ShieldCheck className="w-5 h-5" />
+              <span className="font-semibold tracking-wide">Trust & Safety</span>
+            </Button>
+          )}
 
           <Button
             onClick={() => window.location.href = '/documents'}
@@ -541,6 +560,14 @@ const ChatSidebar = ({
           >
             <Webhook className="w-5 h-5" />
             <span className="font-semibold tracking-wide">Automations</span>
+          </Button>
+
+          <Button
+            onClick={() => window.location.href = '/voice'}
+            className="w-full bg-purple-700 hover:bg-purple-800 text-white shadow-md hover:shadow-lg transition-all transform active:scale-95 rounded-xl h-12 flex items-center justify-center gap-2"
+          >
+            <Phone className="w-5 h-5" />
+            <span className="font-semibold tracking-wide">Voice Agent</span>
           </Button>
 
           <Button

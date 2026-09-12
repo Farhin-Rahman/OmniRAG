@@ -5,10 +5,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 # Add backend directory to Python path for imports
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
@@ -29,10 +25,6 @@ test_env_vars = {
     "NEO_DB": "test",
     "NEO_URI": "bolt://localhost:7687",
     "RABBITMQ_URL": "amqp://guest:guest@localhost:5672/",
-    "SHAREPOINT_TENANT_ID": "test-tenant-id",
-    "SHAREPOINT_CLIENT_ID": "test-client-id",
-    "SHAREPOINT_CLIENT_SECRET": "test-client-secret",
-    "SHAREPOINT_SITE_ID": "test-site-id",
     "QDRANT_HOST": "localhost",
     "QDRANT_PORT": "6333",
     "QDRANT_URI": "http://localhost:6333",
@@ -57,7 +49,10 @@ sys.modules["services.ml_client"] = MagicMock(
     MLServiceClient=MagicMock, ml_client=mock_ml_client
 )
 
-# Mock heavy ML libraries before any imports
+# Mock heavy libraries so app modules import without them installed. These
+# are all in the OCR / document-parsing path, which no test exercises (the
+# tests cover moderation, the LLM client, language utils, and the webhook
+# surface). The CI test env installs only requirements-ci.txt.
 sys.modules["paddleocr"] = MagicMock()
 sys.modules["paddlepaddle"] = MagicMock()
 sys.modules["torch"] = MagicMock()
@@ -68,71 +63,14 @@ sys.modules["docling"] = MagicMock()
 sys.modules["docling_core"] = MagicMock()
 sys.modules["docling_parse"] = MagicMock()
 sys.modules["layoutparser"] = MagicMock()
+sys.modules["pytesseract"] = MagicMock()
+sys.modules["fitz"] = MagicMock()
+_pil = MagicMock()
+sys.modules["PIL"] = _pil
+sys.modules["PIL.Image"] = _pil.Image
+sys.modules["cv2"] = MagicMock()
 
 # Mock task queue dependencies (not tested in CI)
 sys.modules["celery"] = MagicMock()
 sys.modules["pika"] = MagicMock()
 sys.modules["redis"] = MagicMock()
-
-
-@pytest.fixture(scope="function")
-def test_engine():
-    """Create a test database engine for each test."""
-    # Import here to ensure mocks are in place
-    from config.settings import settings
-    from sqlalchemy.pool import StaticPool
-
-    # Use SQLite for tests unless POSTGRES_URL explicitly set
-    if "sqlite" in settings.postgres_url:
-        # For SQLite, create a new in-memory database for each test
-        # Use StaticPool to ensure all connections share the same in-memory database
-        engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,  # Critical: ensures same connection is reused
-        )
-
-        # Enable foreign key constraints for SQLite
-        from sqlalchemy import event
-
-        @event.listens_for(engine, "connect")
-        def set_sqlite_pragma(dbapi_conn, connection_record):  # noqa: ARG001
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-    else:
-        engine = create_engine(settings.postgres_url)
-
-    return engine
-
-
-@pytest.fixture(scope="function")
-def setup_database(test_engine):
-    """Create all tables for each test."""
-    # Import here to ensure proper initialization order
-    from models.base import Base
-
-    # Create all tables
-    Base.metadata.create_all(bind=test_engine)
-    yield
-    # Drop all tables after tests
-    Base.metadata.drop_all(bind=test_engine)
-
-
-@pytest.fixture
-def db_session(setup_database, test_engine):  # noqa: ARG001
-    """Provide a transactional database session for tests."""
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-    session = SessionLocal()
-
-    # Begin a transaction
-    connection = test_engine.connect()
-    transaction = connection.begin()
-    session.bind = connection
-
-    yield session
-
-    # Rollback the transaction
-    session.close()
-    transaction.rollback()
-    connection.close()

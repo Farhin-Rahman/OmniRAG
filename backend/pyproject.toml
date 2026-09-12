@@ -18,7 +18,10 @@ dependencies = [
     # Web Framework
     "fastapi",
     "uvicorn",
+    "websockets",
     "python-multipart",
+    "firebase-admin",
+    "langgraph",
 
     # Database & ORM
     "sqlalchemy",
@@ -57,11 +60,27 @@ ci = [
     "pyyaml",
     "fastapi",
     "uvicorn",
+    "websockets",
     "python-multipart",
     "sqlalchemy",
     "alembic",
     "qdrant-client",
+    "langgraph",
 ]
+
+[tool.ruff.lint]
+# Ruff's classic default rule set (pycodestyle errors + pyflakes). The
+# codebase was written against this; later ruff releases widened their
+# implicit defaults (import sorting, pyupgrade, ...), which is what made
+# CI lint start failing with no code change. Pinning it keeps the check
+# stable across ruff versions.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# These modules deliberately run code (env-var setup, sys.path, a chdir)
+# before importing, so their module-level imports can't all be at the top.
+"mcp_server.py" = ["E402"]
+"moderation/eval/run_eval.py" = ["E402"]
 
 [tool.setuptools.packages.find]
 where = ["."]

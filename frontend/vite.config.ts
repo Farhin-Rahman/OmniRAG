@@ -11,6 +11,13 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: true,
     },
+    // Docker Desktop on Windows doesn't always propagate host-side file
+    // edits into the container's inotify watch reliably — polling is the
+    // robust fallback so HMR actually picks up changes made in the IDE.
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
   },
 
   // Build config: enable hashed filenames in production for cache busting.

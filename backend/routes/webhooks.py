@@ -10,10 +10,12 @@ from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, BackgroundTasks, File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from ai.chat_service import IDENTITY_ANSWER, _is_identity_question
 from ai.llm_client import LLMClient
 from config.settings import settings
+from moderation.graph import run_moderation_pipeline
 from repositories.document_repository import DocumentRepository
 from services.db.sqlite_service import get_db
 from services.db.qdrant_service import get_qdrant_service
@@ -61,7 +63,9 @@ async def ingest_from_url(
 
     content = resp.content
     filename = body.doc_name or body.url.split("/")[-1].split("?")[0] or "document.pdf"
-    mime_type = resp.headers.get("Content-Type", "application/pdf").split(";")[0].strip()
+    mime_type = (
+        resp.headers.get("Content-Type", "application/pdf").split(";")[0].strip()
+    )
     sha256_hash = hashlib.sha256(content).hexdigest()
 
     db = next(get_db())
@@ -95,7 +99,9 @@ async def ingest_from_url(
         background_tasks.add_task(process_document_background, str(document.doc_id))
 
         logger.info(f"Webhook queued document {document.doc_id} from {body.url}")
-        return IngestUrlResponse(doc_id=str(document.doc_id), status="queued", doc_name=filename)
+        return IngestUrlResponse(
+            doc_id=str(document.doc_id), status="queued", doc_name=filename
+        )
 
     except HTTPException:
         raise
@@ -154,7 +160,9 @@ async def upload_file(
         background_tasks.add_task(process_document_background, str(document.doc_id))
 
         logger.info(f"Webhook queued uploaded document {document.doc_id}")
-        return IngestUrlResponse(doc_id=str(document.doc_id), status="queued", doc_name=filename)
+        return IngestUrlResponse(
+            doc_id=str(document.doc_id), status="queued", doc_name=filename
+        )
 
     except HTTPException:
         raise
@@ -185,8 +193,13 @@ async def webhook_query(
     """
     _check_secret(x_webhook_secret)
 
+    if _is_identity_question(body.question):
+        return WebhookQueryResponse(answer=IDENTITY_ANSWER, sources=[])
+
     try:
-        query_vector = await embedding_service.generate_embedding(body.question, mode="query")
+        query_vector = await embedding_service.generate_embedding(
+            body.question, mode="query"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Embedding failed: {e}")
 
@@ -223,3 +236,62 @@ async def webhook_query(
         answer = context_chunks[0][:500]
 
     return WebhookQueryResponse(answer=answer, sources=source_ids)
+
+
+class CampaignReviewRequest(BaseModel):
+    title: str
+    description: str
+    target_amount: float = Field(gt=0)
+    campaign_id: Optional[str] = None
+
+
+class CampaignReviewResponse(BaseModel):
+    campaign_id: str
+    recommended_action: str
+    risk_score: Optional[float]
+    risk_category: Optional[str]
+    rationale: Optional[str]
+    hard_blocked: bool
+    consensus_used: bool
+    detected_language: Optional[str]
+
+
+@router.post("/campaign-review", response_model=CampaignReviewResponse)
+async def campaign_review(
+    body: CampaignReviewRequest,
+    x_webhook_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+):
+    """
+    Automation intake for the Trust & Safety moderation pipeline.
+
+    An n8n / Make / Zapier workflow posts a newly-submitted campaign here.
+    The pipeline translates it, runs the deterministic rules, assesses
+    risk (with the scoped consensus path if the score is ambiguous), and
+    records a recommendation. The workflow takes the response from here and
+    notifies a reviewer — e.g. posts it to a Slack channel.
+
+    This is the deliberate seam between code and no-code: the automation
+    owns intake and notification, this service owns the AI and the
+    immutable recommendation record. The approve/reject/escalate decision
+    stays on the RBAC-gated /api/v1/campaigns/* endpoints — an automation
+    platform is never handed decision authority.
+    """
+    _check_secret(x_webhook_secret)
+
+    campaign_id = body.campaign_id or f"camp-{uuid4().hex[:12]}"
+    result = run_moderation_pipeline(
+        campaign_id=campaign_id,
+        title=body.title,
+        description=body.description,
+        target_amount=body.target_amount,
+    )
+    return CampaignReviewResponse(
+        campaign_id=campaign_id,
+        recommended_action=result["recommended_action"],
+        risk_score=result["risk_score"],
+        risk_category=result["risk_category"],
+        rationale=result["rationale"],
+        hard_blocked=result["hard_blocked"],
+        consensus_used=result["consensus_used"],
+        detected_language=result["detected_language"],
+    )

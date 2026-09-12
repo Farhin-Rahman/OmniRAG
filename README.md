@@ -4,71 +4,69 @@ Internal document compliance assistant with RAG-powered Q&A.
 
 ## Overview
 
-OmniRAG enables organizations to query their internal documents using natural language. It ingests documents from SharePoint, processes them with OCR and chunking, and provides accurate answers with source citations.
+OmniRAG is a unified internal AI workspace, not a pile of disconnected demos. The RAG core answers questions over ingested documents with citations. Built on that same infrastructure is a **Trust & Safety campaign-moderation** system — the main focus of this project — that pairs a deterministic rule engine with LLM risk assessment grounded in retrieval from the platform's own policy documents, keeps a human as the final decision-maker in a real reviewer UI, and measures how often the two agree.
+
+The connective tissue is retrieval: the moderation pipeline's risk assessment queries the **same Qdrant vector index** the document-Q&A chat uses — just a separate `policy_docs` collection — so a risk score comes with a cited policy passage ("violates our Financial-scheme red flags policy"), not just the model's general sense of "seems risky."
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Frontend  │────▶│   Backend   │────▶│  ML Service │
-│   (React)   │     │  (FastAPI)  │     │  (FastAPI)  │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-    ┌──────────┐    ┌──────────┐    ┌──────────┐
-    │ Postgres │    │  Qdrant  │    │ RabbitMQ │
-    │  (Data)  │    │ (Vectors)│    │  (Queue) │
-    └──────────┘    └──────────┘    └──────────┘
+┌───────────────┐     ┌─────────────────────────┐
+│    Frontend   │────▶│         Backend         │
+│ Chat, Moderate│     │        (FastAPI)        │
+└───────────────┘     └────┬───────────┬────────┘
+                           │           │
+                      ┌────▼────┐ ┌────▼──────┐     ┌───────────────┐
+                      │ SQLite  │ │  Qdrant   │◀───▶│  Groq / Ollama│
+                      │ (data + │ │ (docs +   │     │     (LLM)     │
+                      │  audit) │ │  policy)  │     └───────────────┘
+                      └─────────┘ └───────────┘
+
+  Moderation risk assessment retrieves from Qdrant's `policy_docs`
+  collection — the same index document Q&A uses — so its rationale
+  cites real policy, not just LLM judgment.
+
+  n8n  ──▶  /api/webhooks/*   (automation-driven ingestion & query)
+  MCP  ──▶  backend/mcp_server.py   (agent-driven campaign review)
 ```
 
-## SharePoint Sync
+Deliberately lean: the project was consolidated from a Postgres + RabbitMQ +
+separate-ML-service design down to SQLite + in-process work, because nothing
+in the problem being solved needed the heavier infrastructure. Embeddings run
+against a local Ollama model; LLM calls prefer Groq and fall back to Ollama.
 
-OmniRAG maintains a one-way synchronization with a configured SharePoint Document Library.
+## Document Ingestion
 
-### Workflow
-
-1.  **Trigger**: Sync is triggered via the Frontend (calling `POST /api/sync`) or can be run as a standalone CLI script.
-2.  **Execution**: The backend dispatches a background task (`SharePointService`) which ensures only one sync runs per tenant at a time.
-3.  **Delta Query**: The system uses **Microsoft Graph API Delta Query** to fetch only changed files since the last run.
-4.  **State Management**: A local state file (`sync_state_{tenant_id}.json`) persists the `deltaLink` and a mapping of SharePoint Item IDs to local paths.
-
-### Change Handling
-
--   **New/Modified Files**:
-    -   Downloaded to a local cache directory (`documents/`).
-    -   Processed by the `BatchIngestionService` (hashing, OCR, embedding).
-    -   Updates are atomic; database records are only committed on successful ingestion.
--   **Deletions**:
-    -   If a file is removed from SharePoint, the delta query returns a deletion marker.
-    -   The system identifies the file via the state mapping.
-    -   The file is removed from the local filesystem, PostgreSQL, and the Vector Database (Qdrant).
+Documents enter the index through webhook endpoints (`POST /api/webhooks/ingest-url`, `POST /api/webhooks/upload-file`), designed to be driven by an automation tool — an n8n workflow watching a folder, a mailbox, or a cloud drive, then POSTing new files. Each document is hashed for dedup, OCR'd if needed, chunked, embedded against a local Ollama model, and indexed in Qdrant. Deleting a document removes it from SQLite and Qdrant together.
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
-| Frontend | React, TypeScript, Tailwind CSS |
+| Frontend | React, TypeScript, Tailwind CSS (Vite) |
 | Backend | Python 3.11, FastAPI, SQLAlchemy |
-| ML Service | Sentence Transformers, Cross-Encoder |
+| Database | SQLite (application data + append-only audit ledger) |
 | Vector DB | Qdrant |
-| Database | PostgreSQL 15 |
-| Queue | RabbitMQ |
+| Embeddings | Ollama (`nomic-embed-text`), local |
+| LLM | Groq (preferred) with Ollama fallback, via `LLMClient` |
+| Orchestration | LangGraph (moderation pipeline) |
+| Agent interface | MCP (Model Context Protocol) |
+| Auth | Firebase Auth (Google + email/password) + custom-claims RBAC |
+| Voice Agent | Retell AI (telephony/STT/TTS) + WebSocket brain |
+| Automation | n8n (webhook-driven) |
 
 ## Docker Services
 
-The system is composed of several Docker containers orchestrated via `docker-compose`:
+Orchestrated via `docker-compose`:
 
 | Service | Container Name | Description |
 |---------|----------------|-------------|
-| **Frontend** | `omnirag-frontend` | React-based user interface served via Vite (dev) or Nginx (prod). |
-| **Backend** | `omnirag-backend-python` | Core FastAPI application handling API requests, business logic, and database interactions. |
-| **Worker** | `omnirag-worker` | Celery worker for processing background tasks (e.g., document ingestion, OCR). |
-| **ML Service** | `omnirag-ml-service` | Dedicated service for hosting heavy ML models (embeddings, re-ranking) to isolate resource usage. |
-| **PostgreSQL** | `omnirag-postgres` | Relational database for storing application data, users, and document metadata. |
-| **Qdrant** | `omnirag-qdrant` | Vector database for storing and querying document embeddings. |
-| **RabbitMQ** | `omnirag-rabbitmq` | Message broker for task queue management between Backend and Worker. |
-| **Model Warmup** | `omnirag-model-warmup` | Utility container (profile: `warmup`) to pre-download and cache ML models. |
+| **Frontend** | `omnirag-frontend` | React UI served via Vite. |
+| **Backend** | `omnirag-backend-python` | FastAPI application — API, RAG, moderation pipeline, SQLite. |
+| **Qdrant** | `omnirag-qdrant` | Vector database for document embeddings. |
+| **n8n** | `omnirag-n8n` | Automation workflows (webhook-driven ingestion, voice booking). |
+
+The MCP server (`backend/mcp_server.py`) runs on the host, not in a container — MCP clients spawn it as a local subprocess over stdio.
 
 ## Quick Start
 
@@ -122,14 +120,6 @@ DOWNLOAD_URL_SECRET=<your-secret>  # openssl rand -base64 32
 # CORS (comma-separated origins for production)
 CORS_ALLOWED_ORIGINS=http://localhost:5174,http://localhost:5173,http://frontend:8000
 
-# SharePoint Integration
-SHAREPOINT_CLIENT_ID=<client-id>
-SHAREPOINT_CLIENT_SECRET=<client-secret>
-SHAREPOINT_TENANT_ID=<tenant-id>
-SHAREPOINT_SITE_ID=<site-id>
-
-SHAREPOINT_LIMIT=10  # Max files to process during sync/listing
-
 # Google Cloud Configuration
 GCLOUD_CONFIG_PATH=~/.config/gcloud # for linux, please replace with proper path for Windows
 GCP_PROJECT=your-project-id
@@ -141,23 +131,22 @@ OPENROUTER_API_KEY=your-openrouter-api-key-here
 
 ### LLM Configuration
 
-The system supports multiple LLM providers (OpenRouter, Vertex AI) with configurable fallback strategies.
+The backend runs on **Ollama** (local, free, no API key required) via `ai/llm_client.py`. Install Ollama and pull a model:
 
-**Provider Preference** (`LLM_PROVIDER_PREFERENCE`):
--   `auto` (default): Tries OpenRouter first, falls back to Vertex AI.
--   `openrouter`: Prefer OpenRouter, fallback to Vertex AI.
--   `vertex-ai`: Prefer Vertex AI, fallback to OpenRouter.
--   `openrouter-only`: Use OpenRouter only (fail if unavailable).
--   `vertex-only`: Use Vertex AI only (fail if unavailable).
+```bash
+# https://ollama.com/download
+ollama pull qwen2.5:7b
+```
 
-**Vertex AI Authentication**:
-Vertex AI connection supports both Application Default Credentials (ADC) and explicit service account keys:
-1.  **Application Default Credentials (ADC)**:
-    -   Automatic detection when running on Google Cloud (GCE, GKE, Cloud Run).
-    -   For local dev: `gcloud auth application-default login`.
-2.  **Service Account JSON**:
-    -   Set `GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json`.
-    -   Ensure the file is accessible (mounted) within the Docker container.
+Configure via `OLLAMA_BASE_URL` / `OLLAMA_MODEL` in `.env`. `LLMClient` also exposes `generate_stream()` for incremental token streaming (used by the voice agent below).
+
+> Multi-provider support (OpenRouter, Vertex AI) with fallback is on the roadmap but not currently wired into `LLMClient` — `llm_provider_preference` is reserved for that.
+
+**Groq (optional, recommended for the voice agent):** set `GROQ_API_KEY` in `.env` and `LLMClient` prefers it over Ollama automatically. Local CPU inference is too slow for a live phone call (10+ seconds per response, mostly prompt-processing overhead); Groq's inference hardware responds in about a second. Free tier, no card required, at [console.groq.com](https://console.groq.com).
+
+Model choice is per task, not global:
+- `GROQ_MODEL` (default `allam-2-7b`) — the voice agent and chat. A fast, direct-answer model on purpose: reasoning models (e.g. `gpt-oss-*`) stream hidden chain-of-thought before answering, which can exhaust a small `max_tokens` budget on a conversational turn.
+- `MODERATION_LLM_MODEL` (default `openai/gpt-oss-20b`) — Trust & Safety risk assessment. Not latency-bound, and benefits from a reasoning model; the offline eval ([backend/moderation/eval](backend/moderation/eval)) showed the voice model scoring every campaign at a non-committal 0.5. Passed as `LLMClient(model=...)`, and only takes effect when Groq is the active provider (Ollama keeps its own default).
 
 ### Docling Offline Setup Guide (Docker + Celery)
 
@@ -246,6 +235,104 @@ Worker should now:
 - avoid blocking/hanging
 - run stable inside Celery solo mode
 
+## Voice Agent (Retell AI)
+
+OmniRAG can answer phone calls. [Retell AI](https://www.retellai.com) owns the telephony layer — phone number, speech-to-text, text-to-speech, turn-taking, and interruption handling. OmniRAG's backend is the "brain" Retell calls into on every conversation turn over a WebSocket: it answers questions using the same RAG pipeline as the chat/webhook endpoints, and when a caller wants to book a job, it extracts the details and triggers an n8n automation to create the appointment.
+
+### How it works
+
+1.  **Connect**: Retell opens a WebSocket to `wss://<your-host>/api/voice/llm-websocket/{secret}/{call_id}` (configured as a Custom LLM in the Retell dashboard). The secret is a path segment, not a query param — Retell appends `/{call_id}` to whatever base URL you give it, which would otherwise land inside a `?secret=...` query value instead of a new path segment.
+2.  **Per turn**: Retell sends the live transcript; OmniRAG classifies intent (question vs. booking request).
+    -   **Question** → retrieves context from Qdrant, streams a spoken-style answer back over the socket.
+    -   **Booking request** → extracts `service` / `preferred_day` / `preferred_time` / `customer_name`. If anything's missing, it asks a clarifying question instead of guessing. Once complete, it POSTs to the [n8n booking workflow](automation/n8n-voice-booking-workflow.json), which creates the appointment in your CRM/calendar.
+3.  **Failure handling**: if the automation webhook is unreachable, the agent doesn't pretend the booking succeeded — it tells the caller a human will confirm.
+
+### Setup
+
+```bash
+# .env
+VOICE_WEBSOCKET_SECRET=<random-secret>       # openssl rand -hex 32 (hex, not base64 — see note below)
+N8N_BOOKING_WEBHOOK_URL=<your-n8n-webhook>   # see automation/README.md
+```
+
+> The secret is passed as a URL query param, so use `openssl rand -hex 32` rather than base64 — base64's `+` character gets silently decoded as a space by standard query-string parsing, which causes the secret check to fail with no useful error.
+
+In the Retell dashboard's Custom LLM URL field, enter `wss://<your-host>/api/voice/llm-websocket/<VOICE_WEBSOCKET_SECRET>` (no `{call_id}` — Retell appends that itself).
+
+Implementation: [backend/routes/voice.py](backend/routes/voice.py).
+
+## Trust & Safety — Campaign Moderation
+
+A human-authoritative moderation system for reviewing campaign submissions, with an AI reviewer in the loop but never the final decision-maker.
+
+### How it works
+
+1.  **Deterministic rules first** ([backend/moderation/rules.py](backend/moderation/rules.py)) — banned phrases, description length, target-amount bounds. This layer deliberately does **not** use an LLM; some checks don't need AI judgment.
+2.  **Multilingual, automatically** ([backend/moderation/translate.py](backend/moderation/translate.py)) — every submission is language-detected and translated to English before the steps below (LLM-based, reuses `LLMClient`/`GroqClient` — no dedicated translation model or extra dependency).
+3.  **Two AI review paths, same underlying tools:**
+    -   **Automatic** ([backend/moderation/graph.py](backend/moderation/graph.py)) — a small LangGraph pipeline (`translate → rules → risk_assessment → record`) runs the moment a campaign is submitted (`POST /api/v1/campaigns/{id}/auto-review`), so a reviewer's queue already has a recommendation waiting, not a blank campaign. Skips the LLM call entirely when a hard rule block already applies — no point spending an LLM call second-guessing a deterministic block. Otherwise, risk assessment is **policy-grounded**: [backend/moderation/policy_retrieval.py](backend/moderation/policy_retrieval.py) embeds the campaign and retrieves the most relevant passages from LaunchGood's Trust & Safety policy (ingested into a dedicated Qdrant `policy_docs` collection — see [backend/moderation/policy_docs](backend/moderation/policy_docs)), and the model is asked to cite them by name. If the single-pass risk score itself lands in an ambiguous middle band (0.3–0.7), a scoped LLM-as-judge consensus kicks in: 3 independent voters (higher temperature, for genuine variation) plus a judge that reviews all three and gives the final call, using the same retrieved policy — only for the cases the first pass wasn't confident about, not every submission.
+    -   **Interactive, via MCP** ([backend/mcp_server.py](backend/mcp_server.py)) — an actual agent (Claude Desktop, or any MCP client) calls `check_campaign_rules_tool`, reasons about a specific case, and calls `record_campaign_recommendation`. For when a human wants to dig into something ambiguous together with an agent, rather than accept the automatic pass.
+    -   Neither path ever takes action — both only record a recommendation.
+    -   A hard-block ([backend/moderation/notify.py](backend/moderation/notify.py)) posts to Slack (`SLACK_WEBHOOK_URL`, optional — silently skipped if unset), same as an escalation.
+4.  **Intake is glue, not code** — a submitted campaign reaches the pipeline through `POST /api/webhooks/campaign-review` (webhook-secret auth, not RBAC), driven by an [n8n workflow](automation/n8n-campaign-moderation-workflow.json): it takes the recommendation and posts it to a reviewer's Slack channel. The workflow owns intake and notification; the service owns the AI and the immutable record; the decision stays with a human on the RBAC-gated endpoints. Deciding *which of those is a workflow and which is code* is the point.
+5.  **A human decides** — via the [reviewer UI](frontend/src/pages/Moderation.tsx) (`/moderation`: a queue of campaigns with an AI recommendation and no human decision yet, a detail view with the policy-cited rationale, and Approve/Reject/Escalate) or directly via `POST /api/v1/campaigns/{id}/approve|reject|escalate`, both gated by Firebase RBAC (`require_roles("TrustAndSafetyAdmin")`). The AI's recommendation and the human's actual decision are two separate records, so the comparison between them is meaningful. The queue itself is `GET /api/v1/campaigns/queue` ([backend/db/recommendations.py](backend/db/recommendations.py)) — campaigns with a recommendation but no matching audit-ledger entry yet.
+6.  **Append-only audit trail** ([backend/db/audit.py](backend/db/audit.py)) — every human decision, enforced immutable at the SQLite level (triggers block `UPDATE`/`DELETE`, not just app-level convention).
+7.  **Eval metric from real usage** ([backend/db/recommendations.py](backend/db/recommendations.py)) — `GET /api/v1/campaigns/metrics/agreement-rate` joins AI recommendations against human decisions by `campaign_id` and reports how often they agreed. Not a synthetic benchmark — computed from actual reviews.
+
+### Evaluation
+
+Three bars, matching the three kinds of eval:
+
+| Kind | Where | What it checks |
+|---|---|---|
+| **Deterministic** | `pytest tests` on every push ([test_moderation_eval_golden_set.py](backend/tests/test_moderation_eval_golden_set.py)) | The rule engine's hard-block verdict matches the label for all 23 golden-set campaigns. Zero API calls. |
+| **LLM-as-judge** | [dispatchable CI job](.github/workflows/moderation-eval.yml) + `python -m moderation.eval.run_eval` locally ([golden_set.py](backend/moderation/eval/golden_set.py)) | The full pipeline (LLM + consensus) against the same labels — action accuracy, a confusion matrix, and **"missed risk"** (anything dangerous that got APPROVED). Runs weekly and on demand, not on every push (real cost); fails only on a missed risk. |
+| **Human review** | `GET /api/v1/campaigns/metrics/agreement-rate` (point 7 above) | AI recommendation vs. the human's actual decision, from live usage. |
+
+The golden set has two parts: 18 **synthetic** cases written for this project, and 5 **real campaigns** copied from launchgood.com (title / description / goal). The `run_eval` report breaks the real ones out separately. There's no real decision history for a from-scratch project; a production deployment would evaluate against logged human decisions instead.
+
+Latest run: **~19–21/23 exact-action match** (it varies run to run — Groq isn't fully deterministic at temperature 0), but two numbers are stable and are the ones that matter: **0 missed risk** (nothing that should have been stopped was approved) and **0 over-block** (nothing legitimate was auto-rejected). Every mismatch is the pipeline *escalating to a human when it wasn't certain* — a scam it declined to auto-reject, or a real campaign with an internal inconsistency (on one real LaunchGood campaign the model spotted that "$50 × 150 girls" doesn't equal the stated $5,000 goal). The errors are all in the safe direction, by design.
+
+The report also prints **cost** — total LLM calls, tokens, an estimated dollar figure, and how many campaigns triggered the consensus path (each adds 4 calls) — so "is the scoped consensus worth it" is a number. Current run: ~$0.0006/campaign, consensus fires on ~9/23.
+
+> The dispatchable job needs a `GROQ_API_KEY` repository secret (Settings → Secrets and variables → Actions).
+
+### RBAC setup
+
+```bash
+python backend/set_admin.py   # grants TrustAndSafetyAdmin to an email via Firebase custom claims
+```
+
+### Policy ingestion (one-time)
+
+Risk assessment needs the `policy_docs` Qdrant collection populated before it has anything to retrieve — run once (and again if you edit the docs in `backend/moderation/policy_docs/`):
+
+```bash
+docker exec omnirag-backend-python python -m moderation.policy_retrieval
+```
+
+Run inside the container (not the host) — Qdrant and Ollama resolve there via their Docker-network names. Without this, retrieval degrades gracefully to no citation rather than failing the pipeline.
+
+### Running the MCP server
+
+Runs on the **host**, not in Docker — MCP clients spawn servers as local subprocesses over stdio, which doesn't fit a container. Since `./data` is bind-mounted into the backend container at `/app/backend/data`, this script and the running API read/write the same audit trail.
+
+```bash
+.venv/Scripts/python.exe -m pip install -r backend/requirements-mcp.txt
+```
+
+Claude Desktop config (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "omnirag-moderation": {
+      "command": "<repo-path>/.venv/Scripts/python.exe",
+      "args": ["<repo-path>/backend/mcp_server.py"]
+    }
+  }
+}
+```
+
 ## Project Structure
 
 ```
@@ -278,6 +365,14 @@ omnirag/
 ### Sessions
 - `GET /api/sessions` - List chat sessions
 - `DELETE /api/sessions/{id}` - Delete a session
+
+### Voice Agent
+- `WS /api/voice/llm-websocket/{call_id}` - Retell AI Custom LLM integration (see [Voice Agent](#voice-agent-retell-ai))
+
+### Automation Webhooks
+- `POST /api/webhooks/ingest-url` - Ingest a document from a URL
+- `POST /api/webhooks/upload-file` - Ingest an uploaded file
+- `POST /api/webhooks/query` - RAG query for n8n/Make/Zapier integrations
 
 ## Development
 
@@ -313,14 +408,11 @@ npm test
 
 ## Security
 
-- JWT-based authentication with tenant isolation
-- Document-level ACL (per user and group)
-- Token revocation on signout (access + refresh token blacklist)
-- CORS whitelist (configure via `CORS_ALLOWED_ORIGINS`)
-- Rate limiting on sensitive endpoints
-- Audit logging for security-relevant operations
-- Tenant context cryptographically bound via JWT claims
-- Tenant headers are not required; tenant identity comes from JWT `tid`
+- **Firebase Auth** — Google Sign-In and email/password with real email-verification gating. ID tokens verified server-side (`firebase_admin.auth.verify_id_token`), not decode-and-trust.
+- **RBAC** — role from Firebase custom claims. The moderation actions require `TrustAndSafetyAdmin`, enforced independently on the HTTP path (`require_roles`) and the MCP path (`_verify_reviewer`).
+- **Append-only audit ledger** — every human moderation decision, immutability enforced by SQLite triggers (`BEFORE UPDATE`/`BEFORE DELETE`), not app-level convention. (Protects against tampering via SQL; not against raw file access — a production system would add hash-chaining.)
+- **Rate limiting** — in-memory sliding window on all non-health endpoints, keyed by authenticated user then IP; returns 429 with `Retry-After`. Swap for a Redis-backed limiter for multi-instance deploys.
+- **Slack alerting** — hard-blocks and escalations post to `SLACK_WEBHOOK_URL` if configured.
 
 **Note:** Most API endpoints require authentication. Public endpoints are limited to health checks.
 

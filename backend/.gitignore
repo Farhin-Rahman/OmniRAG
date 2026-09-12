@@ -1,0 +1,6 @@
+
+# Firebase / GCP service account credentials — never commit
+gcp-service-account.json
+
+# Eval output (written by moderation/eval/run_eval.py and the CI eval job)
+eval-results.json

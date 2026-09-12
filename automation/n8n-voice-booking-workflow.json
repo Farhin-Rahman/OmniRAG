@@ -1,0 +1,71 @@
+{
+  "name": "OmniRAG Voice Agent — Booking Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "omnirag-voice-booking",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "voice-booking-trigger",
+      "name": "Booking Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "omnirag-voice-booking"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize the payload the voice agent (backend/routes/voice.py) sends:\n// { service, preferred_day, preferred_time, customer_name, call_id }\nconst body = $input.first().json.body || $input.first().json;\nreturn [{\n  json: {\n    service: body.service || 'unspecified',\n    preferred_day: body.preferred_day || 'unspecified',\n    preferred_time: body.preferred_time || null,\n    customer_name: body.customer_name || 'Caller',\n    call_id: body.call_id || null,\n    received_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "normalize-booking",
+      "name": "Normalize Booking Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "notes": "Demo stub: posts to httpbin.org's public echo endpoint so the automation genuinely fires end-to-end without needing real CRM credentials. Swap the URL for your actual CRM/calendar (Google Calendar, HubSpot, ServiceTitan, Jobber, etc.) when going to production.",
+        "method": "POST",
+        "url": "https://httpbin.org/post",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "create-booking",
+      "name": "Create Booking (CRM/Calendar)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [710, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'confirmed', service: $json.service, preferred_day: $json.preferred_day, call_id: $json.call_id } }}"
+      },
+      "id": "respond-booking",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [940, 300]
+    }
+  ],
+  "connections": {
+    "Booking Webhook": {
+      "main": [[{ "node": "Normalize Booking Details", "type": "main", "index": 0 }]]
+    },
+    "Normalize Booking Details": {
+      "main": [[{ "node": "Create Booking (CRM/Calendar)", "type": "main", "index": 0 }]]
+    },
+    "Create Booking (CRM/Calendar)": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

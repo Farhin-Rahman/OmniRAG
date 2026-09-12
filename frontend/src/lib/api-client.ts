@@ -1,5 +1,6 @@
 import { config } from '@/config';
 import { v4 as uuidv4 } from 'uuid';
+import { auth } from '@/auth/firebase';
 
 const API_BASE_URL = config.apiBaseUrl;
 
@@ -61,6 +62,25 @@ export interface Source {
   metadata: any;
 }
 
+export interface ModerationQueueItem {
+  campaign_id: string;
+  source: string;
+  risk_score: number | null;
+  risk_category: string | null;
+  rationale: string | null;
+  recommended_action: 'APPROVE' | 'REJECT' | 'ESCALATE';
+  timestamp: string;
+  title: string | null;
+  description: string | null;
+  target_amount: number | null;
+}
+
+export interface AgreementRate {
+  total_compared: number;
+  agreed: number;
+  agreement_rate: number | null;
+}
+
 export interface Message {
   id: string;
   conversation_id: string;
@@ -97,6 +117,19 @@ class ApiClient {
     this.token = localStorage.getItem('access_token');
   }
 
+  // Dynamically fetches a fresh Firebase ID token on every call (tokens
+  // expire hourly) rather than reading a cached value, so requests never
+  // go out with a stale token.
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      return idToken ? { Authorization: `Bearer ${idToken}` } : {};
+    } catch (error) {
+      console.warn('Could not get Firebase ID token:', error);
+      return {};
+    }
+  }
+
   // --- Document File Helpers (Real Backend) ---
   async uploadFile(file: File): Promise<ApiResponse<any>> {
     try {
@@ -107,6 +140,7 @@ class ApiClient {
         method: "POST",
         body: formData,
         // Don't set Content-Type header here; let the browser boundary magic handle it for FormData
+        headers: await this.getAuthHeaders(),
       });
 
       if (!response.ok) {
@@ -172,6 +206,82 @@ class ApiClient {
 
   async syncBatch(itemIds: string[]): Promise<ApiResponse<{ status: string; message: string }>> {
     return { data: { status: "success", message: "Batch sync triggered" } };
+  }
+
+  // --- Trust & Safety moderation (real backend, RBAC-gated) ---
+  async getModerationQueue(): Promise<ApiResponse<ModerationQueueItem[]>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/campaigns/queue`, {
+        headers: await this.getAuthHeaders(),
+      });
+      if (!response.ok) {
+        const message = response.status === 401 || response.status === 403
+          ? "This account doesn't have Trust & Safety access."
+          : `HTTP error: ${response.status}`;
+        return { error: { message, status: response.status } };
+      }
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      return { error: { message: error instanceof Error ? error.message : "Network error", status: 0 } };
+    }
+  }
+
+  async getAgreementRate(): Promise<ApiResponse<AgreementRate>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/campaigns/metrics/agreement-rate`, {
+        headers: await this.getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      return { error: { message: error instanceof Error ? error.message : "Network error", status: 0 } };
+    }
+  }
+
+  async approveCampaign(campaignId: string): Promise<ApiResponse<Record<string, unknown>>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/campaigns/${campaignId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await this.getAuthHeaders()) },
+      });
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      return { error: { message: error instanceof Error ? error.message : "Network error", status: 0 } };
+    }
+  }
+
+  async rejectCampaign(campaignId: string, reasonCode: string): Promise<ApiResponse<Record<string, unknown>>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/campaigns/${campaignId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await this.getAuthHeaders()) },
+        body: JSON.stringify({ reason_code: reasonCode }),
+      });
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      return { error: { message: error instanceof Error ? error.message : "Network error", status: 0 } };
+    }
+  }
+
+  async escalateCampaign(campaignId: string, fraudFlag: boolean, notes: string): Promise<ApiResponse<Record<string, unknown>>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/campaigns/${campaignId}/escalate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await this.getAuthHeaders()) },
+        body: JSON.stringify({ fraud_flag: fraudFlag, notes }),
+      });
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      return { error: { message: error instanceof Error ? error.message : "Network error", status: 0 } };
+    }
   }
 
   // --- Authentication (Mocked) ---
@@ -311,6 +421,25 @@ class ApiClient {
     return { data: { session_id: sessionId, conversation_id: conversationId || uuidv4(), new_run_id: uuidv4(), message: "Rerun triggered" } };
   }
 
+  // --- Voice Agent (REAL Backend Call) ---
+  async startVoiceCall(): Promise<ApiResponse<{ access_token: string; call_id: string }>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/voice/web-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await this.getAuthHeaders()) },
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP error: ${response.status}`);
+      }
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      console.error('Voice call start error:', error);
+      return { error: { message: error instanceof Error ? error.message : 'Network error', status: 0 } };
+    }
+  }
+
   // --- Chat Completion (REAL Backend Call) ---
   async chatCompletion(
     conversationId: string,
@@ -329,7 +458,7 @@ class ApiClient {
       // 2. Call real backend
       const response = await fetch(`${API_BASE_URL}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await this.getAuthHeaders()) },
         body: JSON.stringify({
           session_id: sessionId || MOCK_USER.id,
           conversation_id: conversationId,

@@ -1,0 +1,20 @@
+# Dependencies for the CI test job — the lightweight subset needed to
+# import and run `pytest tests`. Heavy ML libs (torch, easyocr, docling,
+# pytesseract, …) are mocked in tests/conftest.py, so they're deliberately
+# not here. Mirrors the `ci` group in pyproject.toml.
+
+pytest
+httpx
+python-dotenv
+pydantic
+pydantic-settings
+pyyaml
+fastapi
+uvicorn
+websockets
+python-multipart
+sqlalchemy
+alembic
+qdrant-client
+numpy
+langgraph

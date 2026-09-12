@@ -55,7 +55,9 @@ class DocumentRepository:
         return session.query(Document).filter(Document.sha256 == sha256).first()
 
     @staticmethod
-    def update_status(session: Session, doc_id: UUID, status: str) -> Optional[Document]:
+    def update_status(
+        session: Session, doc_id: UUID, status: str
+    ) -> Optional[Document]:
         document = DocumentRepository.get(session, doc_id)
         if document:
             document.status = status
@@ -77,7 +79,9 @@ class DocumentRepository:
         if doc_type:
             query = query.filter(Document.doc_type == doc_type)
 
-        return query.order_by(Document.created_at.desc()).limit(limit).offset(offset).all()
+        return (
+            query.order_by(Document.created_at.desc()).limit(limit).offset(offset).all()
+        )
 
     @staticmethod
     def delete(session: Session, doc_id: UUID) -> bool:

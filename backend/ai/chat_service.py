@@ -1,5 +1,4 @@
 import logging
-from typing import List, Dict
 from uuid import uuid4
 from datetime import datetime, timezone
 
@@ -10,6 +9,28 @@ from services.db.qdrant_service import get_qdrant_service
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Small local models unreliably follow a conditional "answer as yourself"
+# instruction once document context is in the prompt — they tend to answer
+# from the context anyway. Identity questions are few and predictable
+# enough to just short-circuit in code instead of gambling on the model.
+IDENTITY_QUESTIONS = {
+    "who are you",
+    "what are you",
+    "who is omnirag",
+    "what is omnirag",
+    "introduce yourself",
+    "what can you do",
+    "are you an ai",
+}
+IDENTITY_ANSWER = (
+    "I'm OmniRAG, an AI assistant that answers questions grounded in your "
+    "own documents. Upload a file and ask me about it."
+)
+
+
+def _is_identity_question(message: str) -> bool:
+    return message.strip().lower().rstrip("?!.") in IDENTITY_QUESTIONS
 
 
 class ChatService:
@@ -23,13 +44,35 @@ class ChatService:
         session_id = request.session_id or str(uuid4())
         conversation_id = request.conversation_id or str(uuid4())
 
-        logger.info(f"Received stateless chat request for conversation {conversation_id}")
+        logger.info(
+            f"Received stateless chat request for conversation {conversation_id}"
+        )
 
         start_time = datetime.now(timezone.utc)
-        
+
+        if _is_identity_question(request.message):
+            total_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            return {
+                "data": {
+                    "session_id": session_id,
+                    "conversation_id": conversation_id,
+                    "message": {
+                        "id": str(uuid4()),
+                        "role": "assistant",
+                        "content": IDENTITY_ANSWER,
+                    },
+                    "citations": [],
+                    "sources": [],
+                    "trace_id": str(query_id),
+                    "trace_summary": {"total_ms": total_ms},
+                }
+            }
+
         # 1. Embed query
-        query_vector = await embedding_service.generate_embedding(request.message, mode="query")
-        
+        query_vector = await embedding_service.generate_embedding(
+            request.message, mode="query"
+        )
+
         # 2. Search Qdrant
         search_results = self.qdrant.search(
             query_vector=query_vector,
@@ -40,8 +83,12 @@ class ChatService:
             acl_filter=None,
         )
 
-        context_chunks = [r.get("text") or r.get("content") for r in search_results if (r.get("text") or r.get("content"))]
-        
+        context_chunks = [
+            r.get("text") or r.get("content")
+            for r in search_results
+            if (r.get("text") or r.get("content"))
+        ]
+
         if not context_chunks:
             answer = "No relevant documents found. Please ingest some documents first."
             sources = []
@@ -62,14 +109,16 @@ class ChatService:
 
             sources = []
             for r in search_results[:5]:
-                sources.append({
-                    "chunk_id": str(r.get("chunk_id", "")),
-                    "doc_id": str(r.get("doc_id", "")),
-                    "text": (r.get("text") or r.get("content") or "")[:500],
-                    "page": r.get("page", 1),
-                    "score": float(r.get("score", 0.0)),
-                    "metadata": {"doc_name": r.get("doc_name", "Unknown")}
-                })
+                sources.append(
+                    {
+                        "chunk_id": str(r.get("chunk_id", "")),
+                        "doc_id": str(r.get("doc_id", "")),
+                        "text": (r.get("text") or r.get("content") or "")[:500],
+                        "page": r.get("page", 1),
+                        "score": float(r.get("score", 0.0)),
+                        "metadata": {"doc_name": r.get("doc_name", "Unknown")},
+                    }
+                )
 
         total_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
@@ -85,6 +134,6 @@ class ChatService:
                 "citations": [],
                 "sources": sources,
                 "trace_id": str(query_id),
-                "trace_summary": {"total_ms": total_ms}
+                "trace_summary": {"total_ms": total_ms},
             }
         }

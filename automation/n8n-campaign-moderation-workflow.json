@@ -1,0 +1,112 @@
+{
+  "name": "OmniRAG Trust & Safety — Campaign Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Campaign moderation intake\n\n**What this does:** a campaign submission comes in → OmniRAG's pipeline translates it, checks deterministic rules, and assesses risk → the recommendation is posted to Slack for a human reviewer.\n\n**The boundary:** this workflow owns intake + notification. It never approves or rejects — that stays on the RBAC-gated `/api/v1/campaigns/*` endpoints, done by a human with the `TrustAndSafetyAdmin` role.\n\n**Set these n8n environment variables** (Settings → Variables, or the host env):\n- `OMNIRAG_BACKEND_URL` — e.g. `http://backend:8080` (same Docker network) or `http://host.docker.internal:8081`\n- `OMNIRAG_WEBHOOK_SECRET` — must match the backend's `WEBHOOK_SECRET` (leave blank if the backend doesn't set one)\n- `SLACK_WEBHOOK_URL` — a Slack Incoming Webhook URL for your #trust-safety channel\n\n**Test:** `curl -X POST <n8n-webhook-url> -H 'Content-Type: application/json' -d '{\"title\":\"Guaranteed return investment pool\",\"description\":\"Join now and double your money\",\"target_amount\":50000}'`",
+        "height": 420,
+        "width": 460
+      },
+      "id": "sticky-setup",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, 120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "omnirag-campaign-review",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "campaign-webhook",
+      "name": "Campaign Submitted",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [600, 300],
+      "webhookId": "omnirag-campaign-review"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Accept a campaign submission and normalize it for the pipeline.\n// Expected fields: title, description, target_amount, and optionally\n// campaign_id (generated here if the source system doesn't supply one).\nconst body = $input.first().json.body || $input.first().json;\n\nconst campaignId = body.campaign_id\n  || 'camp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);\n\nreturn [{\n  json: {\n    campaign_id: campaignId,\n    title: (body.title || '').toString().trim(),\n    description: (body.description || '').toString().trim(),\n    target_amount: Number(body.target_amount) || 0\n  }\n}];"
+      },
+      "id": "normalize-campaign",
+      "name": "Normalize Campaign",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8080/api/webhooks/campaign-review",
+        "sendHeaders": false,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "auto-review",
+      "name": "Auto-Review (OmniRAG)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a Slack Block Kit message from the AI recommendation.\nconst r = $input.first().json;\nconst title = $('Normalize Campaign').first().json.title;\n\nconst icon = { APPROVE: ':white_check_mark:', REJECT: ':no_entry:', ESCALATE: ':mag:' }[r.recommended_action] || ':grey_question:';\nconst score = (typeof r.risk_score === 'number') ? r.risk_score.toFixed(2) : 'n/a';\nconst path = r.recommended_action === 'APPROVE' ? 'approve'\n          : r.recommended_action === 'REJECT' ? 'reject' : 'escalate';\n\nreturn [{\n  json: {\n    text: `${icon} Campaign ${r.campaign_id}: AI recommends ${r.recommended_action}`,\n    blocks: [\n      {\n        type: 'header',\n        text: { type: 'plain_text', text: `${icon} AI recommendation: ${r.recommended_action}` }\n      },\n      {\n        type: 'section',\n        fields: [\n          { type: 'mrkdwn', text: `*Campaign*\\n${r.campaign_id}` },\n          { type: 'mrkdwn', text: `*Title*\\n${title || '(none)'}` },\n          { type: 'mrkdwn', text: `*Risk score*\\n${score}  (${r.risk_category || 'n/a'})` },\n          { type: 'mrkdwn', text: `*Signals*\\n${r.hard_blocked ? 'hard rule block' : 'LLM assessment'}${r.consensus_used ? ' + consensus' : ''}, lang=${r.detected_language || '?'}` }\n        ]\n      },\n      { type: 'section', text: { type: 'mrkdwn', text: `*Rationale*\\n${r.rationale || '(none)'}` } },\n      {\n        type: 'context',\n        elements: [{\n          type: 'mrkdwn',\n          text: `Recommendation only — a reviewer records the decision via \\`POST /api/v1/campaigns/${r.campaign_id}/${path}\\` (requires the TrustAndSafetyAdmin role).`\n        }]\n      }\n    ]\n  }\n}];"
+      },
+      "id": "format-slack",
+      "name": "Format Slack Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "PASTE_YOUR_SLACK_WEBHOOK_URL_HERE",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "notify-slack",
+      "name": "Notify #trust-safety",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1480, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Auto-Review (OmniRAG)').first().json) }}"
+      },
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1700, 300]
+    }
+  ],
+  "connections": {
+    "Campaign Submitted": {
+      "main": [[{ "node": "Normalize Campaign", "type": "main", "index": 0 }]]
+    },
+    "Normalize Campaign": {
+      "main": [[{ "node": "Auto-Review (OmniRAG)", "type": "main", "index": 0 }]]
+    },
+    "Auto-Review (OmniRAG)": {
+      "main": [[{ "node": "Format Slack Message", "type": "main", "index": 0 }]]
+    },
+    "Format Slack Message": {
+      "main": [[{ "node": "Notify #trust-safety", "type": "main", "index": 0 }]]
+    },
+    "Notify #trust-safety": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

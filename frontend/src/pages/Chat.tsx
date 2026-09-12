@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
+import { auth } from "@/auth/firebase";
 import { apiClient, type User, onSessionExpired } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import ChatSidebar from "@/components/ChatSidebar";
@@ -30,66 +32,36 @@ const Chat = () => {
     return unsubscribe;
   }, [navigate, toast]);
 
+  // Real session check: this used to read a localStorage access_token that
+  // only the old mock auth (api-client.ts's signIn/signUp) ever wrote.
+  // Once auth/Auth.tsx switched to Firebase, nothing set that token anymore,
+  // so this always found no session and bounced straight back to /auth —
+  // even right after a successful Firebase sign-in. Firebase's own auth
+  // state (the same source Auth.tsx and Moderation.tsx already use) is
+  // the actual source of truth.
   useEffect(() => {
-    const checkSession = async () => {
-      // IMMEDIATELY check localStorage first - no API call needed
-      let storedUser: User | null = null;
-      try {
-        storedUser = apiClient.getUser();
-      } catch (e) {
-        // Fallback: try parsing directly
-        const userStr = localStorage.getItem('user');
-        if (userStr) {
-          try {
-            storedUser = JSON.parse(userStr);
-          } catch {
-            console.warn("Failed to parse stored user JSON");
-          }
-        }
-      }
-      
-      const storedToken = localStorage.getItem('access_token');
-      
-      if (storedUser && storedToken) {
-        // Set user immediately - UI will render right away
-        setUser(storedUser);
-        setIsLoading(false);
-        
-        // Validate in background (don't block UI)
-        apiClient.getSession().then(({ data, error }) => {
-          if (data && data.user) {
-            setUser(data.user);
-          } else if (error && error.status === 401) {
-            apiClient.clearSession();
-            setUser(null);
-            navigate("/auth");
-          }
-        }).catch(() => {
-          // Ignore - user already loaded from localStorage
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser && firebaseUser.emailVerified) {
+        setUser({
+          id: firebaseUser.uid,
+          email: firebaseUser.email || "",
+          full_name: firebaseUser.displayName || undefined,
+          avatar_url: firebaseUser.photoURL || undefined,
+          created_at: firebaseUser.metadata.creationTime || new Date().toISOString(),
         });
-        return;
-      }
-
-      // No localStorage data - check API
-      setIsLoading(true);
-      try {
-        const { data, error } = await apiClient.getSession();
-        if (data && !error && data.user) {
-          setUser(data.user);
-        } else {
-          navigate("/auth");
-        }
-      } catch (err) {
-        navigate("/auth");
-      } finally {
         setIsLoading(false);
+      } else {
+        setUser(null);
+        setIsLoading(false);
+        navigate("/auth");
       }
-    };
+    });
 
-    checkSession();
+    return unsubscribe;
   }, [navigate]);
 
   const handleSignOut = async () => {
+    await firebaseSignOut(auth);
     await apiClient.signOut();
     navigate("/auth");
   };

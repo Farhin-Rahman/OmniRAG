@@ -1,0 +1,51 @@
+name: Moderation LLM Eval
+
+# The golden set (backend/moderation/eval/golden_set.py) is scored two ways.
+# The deterministic half — does the rule engine's hard-block verdict match
+# the label? — runs on every push as part of `pytest tests`
+# (test_moderation_eval_golden_set.py). This job is the other half: the
+# full pipeline including real LLM calls, scored against the same labels.
+# It costs API calls and is non-deterministic, so it does not gate PRs —
+# it runs on demand and weekly, and fails only if a case that should not
+# have been APPROVEd was.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+jobs:
+  llm-eval:
+    name: Golden-set LLM eval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - name: Set up Python
+        run: uv python install 3.11
+      - name: Install CI dependencies only
+        working-directory: backend
+        run: uv sync --group ci --frozen
+      - name: Run the eval
+        working-directory: backend
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "::error::GROQ_API_KEY secret is not set — add it in Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          uv run python -m moderation.eval.run_eval \
+            --delay 20 \
+            --json eval-results.json \
+            --summary-file "$GITHUB_STEP_SUMMARY" \
+            --fail-on-missed-risk
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moderation-eval-results
+          path: backend/eval-results.json

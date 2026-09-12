@@ -1,6 +1,5 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -35,11 +34,17 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 4096
     llm_provider_preference: str = "ollama"
 
-    # SharePoint / Microsoft Graph Configuration
-    sharepoint_client_id: str = ""
-    sharepoint_client_secret: str = ""
-    sharepoint_tenant_id: str = ""
-    sharepoint_site_id: str = ""
+    # Groq (hosted, fast) — used instead of Ollama when GROQ_API_KEY is set.
+    # Local CPU inference is too slow for latency-sensitive paths like the
+    # live voice agent; Groq's inference hardware responds in under a second.
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    # Trust & Safety moderation runs its own model choice: unlike the voice
+    # agent (fast, direct-answer, latency-bound), risk assessment benefits
+    # from a reasoning model and isn't latency-sensitive. Offline eval
+    # (moderation/eval) showed the default voice model scoring every case
+    # at 0.5. Only applied when the active provider is Groq.
+    moderation_llm_model: str = os.getenv("MODERATION_LLM_MODEL", "openai/gpt-oss-20b")
 
     # ML Service Configuration
     ml_service_url: str = os.getenv("ML_SERVICE_URL", "http://ml-service:8000")
@@ -48,6 +53,25 @@ class Settings(BaseSettings):
     # Retrieval Configuration (for MLflow config snapshot)
     dense_k: int = int(os.getenv("DENSE_K", "50"))
     per_doc_limit: int = int(os.getenv("PER_DOC_LIMIT", "3"))
+
+    # Voice Agent (Retell custom-LLM) Configuration
+    n8n_booking_webhook_url: str = os.getenv("N8N_BOOKING_WEBHOOK_URL", "")
+    voice_websocket_secret: str = os.getenv("VOICE_WEBSOCKET_SECRET", "")
+    # Platform API key (Settings > API Keys in Retell dashboard) — distinct
+    # from the Custom LLM websocket URL/secret above. Used server-side only,
+    # to start web-call sessions on behalf of the OmniRAG frontend.
+    retell_api_key: str = os.getenv("RETELL_API_KEY", "")
+    retell_agent_id: str = os.getenv("RETELL_AGENT_ID", "")
+
+    # Firebase Auth — service account JSON lives at backend/gcp-service-account.json
+    # (gitignored, never committed). Override the path via env if needed.
+    firebase_service_account_path: str = os.getenv(
+        "FIREBASE_SERVICE_ACCOUNT_PATH", "gcp-service-account.json"
+    )
+
+    # Slack Incoming Webhook for moderation alerts (hard-blocks, escalations).
+    # Optional — unset means notifications are silently skipped.
+    slack_webhook_url: str = os.getenv("SLACK_WEBHOOK_URL", "")
 
     @property
     def qdrant_chunk_collection(self) -> str:

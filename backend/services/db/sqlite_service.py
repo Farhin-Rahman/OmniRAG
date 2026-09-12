@@ -15,6 +15,7 @@ engine = create_engine(
     echo=False,
 )
 
+
 # Enable foreign key constraints for SQLite
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_conn, connection_record):

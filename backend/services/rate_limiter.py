@@ -14,7 +14,8 @@ from collections import defaultdict
 from threading import Lock
 from typing import Callable, Optional
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from services.audit_logger import AuditEventType, audit_log
@@ -173,9 +174,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 outcome="failure",
                 details={"endpoint": request.url.path, "client_id": client_id},
             )
-            raise HTTPException(
+            # Return the response directly rather than `raise HTTPException`:
+            # FastAPI's exception handlers wrap the router, not user
+            # middleware, so an HTTPException raised here would skip them
+            # entirely and surface as a bare 500 from ServerErrorMiddleware
+            # instead of the intended 429.
+            return JSONResponse(
                 status_code=429,
-                detail=f"Rate limit exceeded. Try again in {reset_in} seconds.",
+                content={
+                    "detail": f"Rate limit exceeded. Try again in {reset_in} seconds."
+                },
                 headers={
                     "X-RateLimit-Limit": str(self.limiter.requests),
                     "X-RateLimit-Remaining": "0",

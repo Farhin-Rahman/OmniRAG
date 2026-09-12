@@ -4,7 +4,6 @@ Embedding service using local Ollama.
 
 import logging
 import os
-import time
 import httpx
 from typing import List, Union
 
@@ -12,9 +11,12 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+
 class EmbeddingService:
     def __init__(self):
-        self.base_url = os.getenv("OLLAMA_BASE_URL", settings.ollama_base_url).rstrip("/")
+        self.base_url = os.getenv("OLLAMA_BASE_URL", settings.ollama_base_url).rstrip(
+            "/"
+        )
         # We can use the main model or a specific embedding model (e.g. nomic-embed-text)
         self.default_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
@@ -30,9 +32,9 @@ class EmbeddingService:
         """
         if isinstance(text, str):
             if not text.strip():
-                return [0.0] * 1024 # fallback dim, Ollama nomic is usually 768
+                return [0.0] * 1024  # fallback dim, Ollama nomic is usually 768
             return self._call_ollama(text)
-            
+
         # If it's a list, process them
         results = []
         for t in text:
@@ -60,5 +62,6 @@ class EmbeddingService:
         except Exception as e:
             logger.error(f"Ollama network error: {e}")
             raise RuntimeError(f"Ollama network error: {e}")
+
 
 embedding_service = EmbeddingService()
