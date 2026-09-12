@@ -51,7 +51,9 @@ class ChatService:
         start_time = datetime.now(timezone.utc)
 
         if _is_identity_question(request.message):
-            total_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            total_ms = int(
+                (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+            )
             return {
                 "data": {
                     "session_id": session_id,
