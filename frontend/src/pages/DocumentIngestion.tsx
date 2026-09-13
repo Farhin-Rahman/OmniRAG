@@ -107,22 +107,33 @@ export default function DocumentIngestion() {
         if (res.error) {
             toast.error(`Upload failed: ${res.error.message}`);
         } else {
-            toast.success(`Successfully uploaded ${file.name}`);
-            
-            // Add a mock file to the list to show it locally
-            setStatus((prev) => ({
-                ...prev,
-                files: [
-                    { 
-                        item_id: res.data.doc_id || Date.now().toString(), 
-                        fileName: file.name, 
-                        filestatus: 'ready', 
-                        filepath: '/Local Uploads',
-                        doc_id: res.data.doc_id
-                    },
-                    ...(prev?.files || [])
-                ]
-            }));
+            // The backend dedupes by file content and returns the *existing*
+            // doc_id for a repeat upload rather than creating a new one — but
+            // that means the same doc_id can come back on a second upload.
+            // Without this check we'd add a second row for a document that's
+            // already in the list.
+            const alreadyExists = status?.files?.some((f) => f.doc_id === res.data.doc_id);
+
+            if (alreadyExists) {
+                toast.info(`"${file.name}" is already uploaded. Head to Chat to ask about it, or upload a different document.`);
+            } else {
+                toast.success(`Successfully uploaded ${file.name}`);
+
+                // Add a mock file to the list to show it locally
+                setStatus((prev) => ({
+                    ...prev,
+                    files: [
+                        {
+                            item_id: res.data.doc_id || Date.now().toString(),
+                            fileName: file.name,
+                            filestatus: 'ready',
+                            filepath: '/Local Uploads',
+                            doc_id: res.data.doc_id
+                        },
+                        ...(prev?.files || [])
+                    ]
+                }));
+            }
         }
         setSyncing(false);
         if (fileInputRef.current) {

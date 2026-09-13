@@ -46,12 +46,13 @@ def _chunk_markdown(text: str, source: str) -> list[dict]:
 
 
 def _embed(text: str) -> list[float]:
-    # generate_embedding is declared async but its implementation
-    # (_call_ollama) is fully synchronous — the moderation pipeline is
-    # synchronous throughout (graph.py never awaits), running inside a
-    # FastAPI request's already-active event loop, where asyncio.run()
-    # would raise. Calling the sync implementation directly avoids that.
-    return embedding_service._call_ollama(text)
+    # generate_embedding is declared async but its implementation is fully
+    # synchronous — the moderation pipeline is synchronous throughout
+    # (graph.py never awaits), running inside a FastAPI request's already-
+    # active event loop, where asyncio.run() would raise. Calling the sync
+    # implementation directly avoids that. Goes through _embed (not
+    # _call_ollama) so this also honors the Gemini-over-Ollama preference.
+    return embedding_service._embed(text)
 
 
 def ingest_policy_docs() -> int:

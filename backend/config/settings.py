@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # live voice agent; Groq's inference hardware responds in under a second.
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+
+    # Gemini (hosted, free tier) — used for embeddings instead of Ollama when
+    # GEMINI_API_KEY is set. Ollama has no hosted equivalent, so deployments
+    # that can't run it locally (no GPU/CPU budget for it) need a hosted
+    # embedding provider; Gemini's text-embedding-004 is free-tier and
+    # outputs 768 dims by default, matching the existing Qdrant collection.
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     # Trust & Safety moderation runs its own model choice: unlike the voice
     # agent (fast, direct-answer, latency-bound), risk assessment benefits
     # from a reasoning model and isn't latency-sensitive. Offline eval
