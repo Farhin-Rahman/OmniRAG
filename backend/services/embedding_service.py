@@ -17,8 +17,12 @@ logger = logging.getLogger(__name__)
 
 GEMINI_EMBED_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "text-embedding-004:embedContent"
+    "gemini-embedding-001:embedContent"
 )
+# gemini-embedding-001 defaults to 3072 dims and supports Matryoshka
+# truncation via outputDimensionality — pinned to 768 to match the
+# existing Qdrant collection (originally sized for Ollama's nomic-embed-text).
+GEMINI_OUTPUT_DIMENSIONALITY = 768
 
 
 class EmbeddingService:
@@ -63,7 +67,10 @@ class EmbeddingService:
         try:
             response = httpx.post(
                 url=f"{GEMINI_EMBED_URL}?key={self.gemini_api_key}",
-                json={"content": {"parts": [{"text": prompt}]}},
+                json={
+                    "content": {"parts": [{"text": prompt}]},
+                    "outputDimensionality": GEMINI_OUTPUT_DIMENSIONALITY,
+                },
                 timeout=30.0,
             )
             if response.status_code == 200:
