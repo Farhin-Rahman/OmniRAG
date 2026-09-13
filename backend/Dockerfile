@@ -39,8 +39,13 @@ COPY . .
 # Make entrypoint executable
 RUN chmod +x /app/backend/entrypoint.sh
 
-# Create cache directory with proper permissions
-RUN mkdir -p /home/appuser/.cache/huggingface && \
+# data/ is gitignored (runtime SQLite files, not source) so it never
+# arrives via COPY — must exist before the app can create its database
+# files there. Locally this is masked by the docker-compose bind mount
+# always having a real data/ directory on the host; on a host that
+# deploys straight from the image (Render, etc.) there's no such mount.
+RUN mkdir -p /app/backend/data && \
+    mkdir -p /home/appuser/.cache/huggingface && \
     useradd -m appuser && \
     chown -R appuser:appuser /app/backend /home/appuser
 
