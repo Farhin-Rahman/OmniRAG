@@ -10,10 +10,12 @@ from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, BackgroundTasks, File, UploadFile
+from firebase_admin import auth as firebase_auth
 from pydantic import BaseModel, Field
 
 from ai.chat_service import IDENTITY_ANSWER, _is_identity_question
 from ai.llm_client import LLMClient
+from api.deps import _get_firebase_app
 from config.settings import settings
 from moderation.graph import run_moderation_pipeline
 from repositories.document_repository import DocumentRepository
@@ -31,6 +33,21 @@ def _check_secret(secret: Optional[str]) -> None:
     webhook_secret = os.getenv("WEBHOOK_SECRET", "")
     if webhook_secret and secret != webhook_secret:
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+
+def _is_signed_in_user(authorization: Optional[str]) -> bool:
+    """True if `authorization` is a valid Firebase ID token. Used by routes
+    that are called both by signed-in users through the UI (e.g. document
+    upload) and by external automations — either is accepted, since the
+    frontend can't hold the webhook secret without exposing it publicly."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return False
+    try:
+        _get_firebase_app()
+        firebase_auth.verify_id_token(authorization[len("Bearer ") :])
+        return True
+    except Exception:
+        return False
 
 
 class IngestUrlRequest(BaseModel):
@@ -118,11 +135,15 @@ async def upload_file(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     x_webhook_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+    authorization: Optional[str] = Header(None),
 ):
     """
     Upload a local file and queue it through the RAG ingestion pipeline.
+    Called both by signed-in users via the Document Library UI and
+    potentially by external automations — accepts either.
     """
-    _check_secret(x_webhook_secret)
+    if not _is_signed_in_user(authorization):
+        _check_secret(x_webhook_secret)
 
     content = await file.read()
     filename = file.filename or "document.pdf"
