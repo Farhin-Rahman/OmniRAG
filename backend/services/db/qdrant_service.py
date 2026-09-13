@@ -35,9 +35,12 @@ class QdrantSearchService:
         self.host = host or settings.qdrant_host
         self.port = port or settings.qdrant_port
 
-        # You could also use url=settings.qdrant_url if you have TLS / Cloud
-        self.client = QdrantClient(host=self.host, port=self.port)
-        logger.info("Qdrant service initialized: %s:%s", self.host, self.port)
+        if settings.qdrant_api_key:
+            self.client = QdrantClient(url=settings.qdrant_uri, api_key=settings.qdrant_api_key)
+            logger.info("Qdrant service initialized via cloud URL: %s", settings.qdrant_uri)
+        else:
+            self.client = QdrantClient(host=self.host, port=self.port)
+            logger.info("Qdrant service initialized: %s:%s", self.host, self.port)
 
     def search(
         self,
@@ -369,8 +372,12 @@ class QdrantService:
         port: int = settings.qdrant_port,
     ) -> None:
         try:
-            self.client = QdrantClient(host=host, port=port)
-            logger.info("Connected to Qdrant successfully at %s:%s", host, port)
+            if settings.qdrant_api_key:
+                self.client = QdrantClient(url=settings.qdrant_uri, api_key=settings.qdrant_api_key)
+                logger.info("Connected to Qdrant Cloud successfully at %s", settings.qdrant_uri)
+            else:
+                self.client = QdrantClient(host=host, port=port)
+                logger.info("Connected to Qdrant successfully at %s:%s", host, port)
         except Exception as exc:
             logger.error("Failed to connect to Qdrant: %s", exc, exc_info=True)
             raise

@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_uri: str = "http://qdrant:6333"
     qdrant_collection: str = "chunks"
+    # Set for Qdrant Cloud (a hosted cluster reachable only over HTTPS with
+    # a key, not local host:port) — when present, qdrant_uri + this key are
+    # used instead of qdrant_host/qdrant_port.
+    qdrant_api_key: str = ""
 
     qdrant_chunk_collection_prefix: str = "chunks"
     qdrant_doc_collection_prefix: str = "docs"
