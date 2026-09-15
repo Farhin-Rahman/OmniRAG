@@ -94,8 +94,17 @@ curl -X POST http://localhost:5678/webhook/ask-omnirag \
 
 **Payload sent by the voice agent:**
 ```json
-{ "service": "drain cleaning", "preferred_day": "Tuesday", "preferred_time": "afternoon", "customer_name": "Jane Doe", "call_id": "abc123" }
+{
+  "service": "furnace repair",
+  "address": "142 Maple Crescent, Calgary, AB",
+  "phone": "4035551234",
+  "customer_name": "Jane Doe",
+  "preferred_day": "Tuesday",
+  "preferred_time": "afternoon",
+  "call_id": "abc123"
+}
 ```
+`service`, `address`, `phone`, and `customer_name` are always present — the agent never confirms a booking without them. `preferred_day`/`preferred_time` are optional and may be `null`.
 
 ---
 

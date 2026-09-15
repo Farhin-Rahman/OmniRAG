@@ -40,23 +40,36 @@ def init_bookings_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 call_id TEXT,
                 service TEXT NOT NULL,
+                address TEXT,
+                phone TEXT,
+                customer_name TEXT,
                 preferred_day TEXT,
                 preferred_time TEXT,
-                customer_name TEXT,
                 status TEXT NOT NULL DEFAULT 'confirmed',
                 created_at TEXT NOT NULL
             )
             """
         )
+        # address/phone added after the initial release — guarded ALTER so
+        # this migrates an already-created table (e.g. on a running
+        # deployment) in place, same pattern as db/recommendations.py.
+        for column in ("address TEXT", "phone TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE bookings ADD COLUMN {column}")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
     logger.info(f"Bookings log ready at {DB_PATH}")
 
 
 def record_booking(
     service: str,
     call_id: Optional[str] = None,
+    address: Optional[str] = None,
+    phone: Optional[str] = None,
+    customer_name: Optional[str] = None,
     preferred_day: Optional[str] = None,
     preferred_time: Optional[str] = None,
-    customer_name: Optional[str] = None,
 ) -> int:
     """Insert one booking. Returns the new row id."""
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -64,10 +77,10 @@ def record_booking(
         cursor = conn.execute(
             """
             INSERT INTO bookings
-                (call_id, service, preferred_day, preferred_time, customer_name, status, created_at)
-            VALUES (?, ?, ?, ?, ?, 'confirmed', ?)
+                (call_id, service, address, phone, customer_name, preferred_day, preferred_time, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
             """,
-            (call_id, service, preferred_day, preferred_time, customer_name, timestamp),
+            (call_id, service, address, phone, customer_name, preferred_day, preferred_time, timestamp),
         )
         row_id = cursor.lastrowid
 
@@ -81,8 +94,8 @@ def list_bookings(limit: int = 20) -> list[dict]:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
-            SELECT id, call_id, service, preferred_day, preferred_time,
-                   customer_name, status, created_at
+            SELECT id, call_id, service, address, phone, customer_name,
+                   preferred_day, preferred_time, status, created_at
             FROM bookings
             ORDER BY created_at DESC
             LIMIT ?

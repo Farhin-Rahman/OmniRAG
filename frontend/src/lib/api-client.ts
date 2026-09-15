@@ -80,9 +80,11 @@ export interface Booking {
   id: number;
   call_id: string | null;
   service: string;
+  address: string | null;
+  phone: string | null;
+  customer_name: string | null;
   preferred_day: string | null;
   preferred_time: string | null;
-  customer_name: string | null;
   status: string;
   created_at: string;
 }

@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Normalize the payload the voice agent (backend/routes/voice.py) sends:\n// { service, preferred_day, preferred_time, customer_name, call_id }\nconst body = $input.first().json.body || $input.first().json;\nreturn [{\n  json: {\n    service: body.service || 'unspecified',\n    preferred_day: body.preferred_day || 'unspecified',\n    preferred_time: body.preferred_time || null,\n    customer_name: body.customer_name || 'Caller',\n    call_id: body.call_id || null,\n    received_at: new Date().toISOString()\n  }\n}];"
+        "jsCode": "// Normalize the payload the voice agent (backend/routes/voice.py) sends:\n// { service, address, phone, customer_name, preferred_day, preferred_time, call_id }\n// address/phone are required fields (booking is never confirmed without them);\n// preferred_day/preferred_time are optional and may be null.\nconst body = $input.first().json.body || $input.first().json;\nreturn [{\n  json: {\n    service: body.service || 'unspecified',\n    address: body.address || 'unspecified',\n    phone: body.phone || 'unspecified',\n    customer_name: body.customer_name || 'Caller',\n    preferred_day: body.preferred_day || null,\n    preferred_time: body.preferred_time || null,\n    call_id: body.call_id || null,\n    received_at: new Date().toISOString()\n  }\n}];"
       },
       "id": "normalize-booking",
       "name": "Normalize Booking Details",
@@ -44,7 +44,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'confirmed', service: $json.service, preferred_day: $json.preferred_day, call_id: $json.call_id } }}"
+        "responseBody": "={{ { status: 'confirmed', service: $json.service, address: $json.address, call_id: $json.call_id } }}"
       },
       "id": "respond-booking",
       "name": "Respond to Webhook",

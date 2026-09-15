@@ -200,9 +200,14 @@ export default function VoiceAgent() {
                   <div>
                     <p className="text-slate-200 font-medium">{b.service}</p>
                     <p className="text-slate-500 text-xs">
-                      {b.customer_name || 'Unknown caller'} · {b.preferred_day || 'day TBD'}
-                      {b.preferred_time ? `, ${b.preferred_time}` : ''}
+                      {b.customer_name || 'Unknown caller'} · {b.address || 'address not captured'}
+                      {b.phone ? ` · ${b.phone}` : ''}
                     </p>
+                    {(b.preferred_day || b.preferred_time) && (
+                      <p className="text-slate-600 text-xs">
+                        {b.preferred_day || ''}{b.preferred_day && b.preferred_time ? ', ' : ''}{b.preferred_time || ''}
+                      </p>
+                    )}
                   </div>
                   <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                     {b.status}

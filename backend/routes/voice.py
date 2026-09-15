@@ -44,9 +44,11 @@ class BookingResponse(BaseModel):
     id: int
     call_id: str | None
     service: str
+    address: str | None
+    phone: str | None
+    customer_name: str | None
     preferred_day: str | None
     preferred_time: str | None
-    customer_name: str | None
     status: str
     created_at: str
 
@@ -97,11 +99,14 @@ async def create_web_call():
 
 
 SYSTEM_INSTRUCTION = (
-    "You are a friendly phone assistant for a home services company. "
-    "This is a live phone call, not a chat window. Answer in ONE short "
-    "sentence, under 20 words — a caller will not wait through a long "
-    "answer. Never make up information; if you don't know something, say "
-    "so briefly and offer to have a human follow up."
+    "You are the phone assistant for Apex HVAC & Plumbing, an HVAC and "
+    "plumbing company serving Alberta, Canada. This is a live phone call, "
+    "not a chat window. Answer in ONE short sentence, under 20 words — a "
+    "caller will not wait through a long answer. Ground every factual "
+    "answer (service areas, pricing, hours, troubleshooting) strictly in "
+    "the provided context — never invent a price, address, or policy that "
+    "isn't in it. If the context doesn't cover the question, say so "
+    "briefly and offer to have a human follow up instead of guessing."
 )
 
 # Local CPU inference costs real wall-clock seconds per generated token —
@@ -116,11 +121,14 @@ RAG_ANSWER_MAX_TOKENS = 60
 INTENT_PROMPT_TEMPLATE = """Classify the caller's latest message. Respond with ONLY compact JSON, no prose, no markdown fences.
 
 Schema:
-{{"intent": "book_appointment" | "question" | "other", "service": string|null, "preferred_day": string|null, "preferred_time": string|null, "customer_name": string|null, "missing_fields": string[]}}
+{{"intent": "book_appointment" | "question" | "other", "service": string|null, "address": string|null, "phone": string|null, "customer_name": string|null, "preferred_day": string|null, "preferred_time": string|null, "missing_fields": string[]}}
 
 Rules:
 - intent="book_appointment" only if the caller is clearly asking to schedule/book a job.
-- "missing_fields" lists any of [service, preferred_day, customer_name] that are still unknown — do not guess values.
+- "missing_fields" lists any of [service, address, phone, customer_name] that are still unknown — do not guess values.
+- "address" must be the caller's own words, verbatim. Never infer, complete, autocorrect, or guess a street number, unit, or city the caller did not actually say — a partial or unclear address counts as missing, not as a best guess.
+- "phone" must also be exactly what the caller said, digit for digit — do not normalize, autocomplete, or assume a missing digit.
+- preferred_day/preferred_time are nice to capture but are never required to confirm a booking.
 - Otherwise intent="question" (they're asking something) or "other" (small talk, unclear).
 
 Conversation so far:
@@ -177,9 +185,11 @@ async def _classify_intent(llm: LLMClient, conversation: str, message: str) -> d
     fallback = {
         "intent": "question",
         "service": None,
+        "address": None,
+        "phone": None,
+        "customer_name": None,
         "preferred_day": None,
         "preferred_time": None,
-        "customer_name": None,
         "missing_fields": [],
     }
     try:
@@ -328,18 +338,30 @@ async def _handle_turn(
         intent = {
             "intent": "question",
             "service": None,
+            "address": None,
+            "phone": None,
+            "customer_name": None,
             "preferred_day": None,
             "preferred_time": None,
-            "customer_name": None,
             "missing_fields": [],
         }
 
     if intent["intent"] == "book_appointment":
-        required = ("service", "preferred_day", "customer_name")
+        required = ("service", "address", "phone", "customer_name")
         # Don't just trust the model's self-reported "missing_fields" — smaller
         # models sometimes claim nothing's missing while still leaving a field
         # null. Independently verify every required field actually has a value.
         missing = [f for f in required if not intent.get(f)]
+        # A non-null address isn't necessarily a *usable* one — tested this
+        # directly: the model will capture a vague phrase like "somewhere
+        # near downtown" verbatim (correctly not fabricating a fake precise
+        # address) but won't reliably flag it as missing on its own. A real
+        # North American street address always has a number in it; treat an
+        # address with none as still missing rather than trust it blindly.
+        if "address" not in missing and not any(
+            ch.isdigit() for ch in (intent.get("address") or "")
+        ):
+            missing.append("address")
         if missing:
             ask = f"Happy to book that — could you tell me the {missing[0].replace('_', ' ')}?"
             await websocket.send_text(
@@ -366,9 +388,11 @@ async def _handle_turn(
                             k: intent[k]
                             for k in (
                                 "service",
+                                "address",
+                                "phone",
+                                "customer_name",
                                 "preferred_day",
                                 "preferred_time",
-                                "customer_name",
                             )
                         }
                     ),
@@ -379,7 +403,14 @@ async def _handle_turn(
         booked = await _trigger_booking_webhook(
             {
                 k: intent[k]
-                for k in ("service", "preferred_day", "preferred_time", "customer_name")
+                for k in (
+                    "service",
+                    "address",
+                    "phone",
+                    "customer_name",
+                    "preferred_day",
+                    "preferred_time",
+                )
             },
             call_id,
         )
@@ -399,11 +430,16 @@ async def _handle_turn(
             record_booking(
                 service=intent["service"],
                 call_id=call_id,
+                address=intent.get("address"),
+                phone=intent.get("phone"),
+                customer_name=intent.get("customer_name"),
                 preferred_day=intent.get("preferred_day"),
                 preferred_time=intent.get("preferred_time"),
-                customer_name=intent.get("customer_name"),
             )
-            content = f"You're all set for {intent['service']} on {intent['preferred_day']}. Anything else?"
+            # preferred_day is optional now (never blocks a booking), so the
+            # confirmation can't assume it's there.
+            when = f" on {intent['preferred_day']}" if intent.get("preferred_day") else ""
+            content = f"You're all set for {intent['service']}{when} at {intent['address']}. Anything else?"
         else:
             # Failure mode: don't pretend it worked — degrade to a human handoff.
             content = "I've got your details, but I'm having trouble reaching the booking system right now — I'll have someone confirm with you shortly."
