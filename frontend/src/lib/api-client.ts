@@ -76,6 +76,17 @@ interface RawDocumentRecord {
   status: string;
 }
 
+export interface Booking {
+  id: number;
+  call_id: string | null;
+  service: string;
+  preferred_day: string | null;
+  preferred_time: string | null;
+  customer_name: string | null;
+  status: string;
+  created_at: string;
+}
+
 export interface ModerationQueueItem {
   campaign_id: string;
   source: string;
@@ -450,6 +461,17 @@ class ApiClient {
       return { data };
     } catch (error) {
       console.error('Voice call start error:', error);
+      return { error: { message: error instanceof Error ? error.message : 'Network error', status: 0 } };
+    }
+  }
+
+  async getBookings(): Promise<ApiResponse<Booking[]>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/voice/bookings`);
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+      const data = await response.json();
+      return { data };
+    } catch (error) {
       return { error: { message: error instanceof Error ? error.message : 'Network error', status: 0 } };
     }
   }

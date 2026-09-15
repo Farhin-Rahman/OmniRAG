@@ -18,6 +18,7 @@ from services.db.qdrant_service import QdrantService
 from services.db.sqlite_service import init_db
 from db.audit import init_audit_db
 from db.recommendations import init_recommendations_db
+from db.bookings import init_bookings_db
 from services.rate_limiter import RateLimitMiddleware
 from config.settings import settings
 from config.logging import setup_logging
@@ -52,6 +53,11 @@ async def lifespan(app: FastAPI):
         init_recommendations_db()
     except Exception as e:
         logger.error(f"Failed to initialize AI recommendations db: {e}")
+
+    try:
+        init_bookings_db()
+    except Exception as e:
+        logger.error(f"Failed to initialize bookings db: {e}")
 
     try:
         qdrant_service.initialize_qdrant_collection()

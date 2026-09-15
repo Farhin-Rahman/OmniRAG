@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RetellWebClient } from 'retell-client-js-sdk';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Mic, PhoneOff, Loader2, Volume2 } from 'lucide-react';
+import { ArrowLeft, Mic, PhoneOff, Loader2, Volume2, CalendarCheck } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, type Booking } from '@/lib/api-client';
 
 const glassCard = "backdrop-filter backdrop-blur-2xl bg-white/5 border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] rounded-2xl overflow-hidden transition-all duration-500";
 const glassContainer = "min-h-screen bg-slate-950 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-black p-6 font-sans flex flex-col items-center pt-10 text-slate-200 selection:bg-indigo-500/30";
@@ -21,7 +21,20 @@ export default function VoiceAgent() {
   const [callState, setCallState] = useState<CallState>('idle');
   const [transcript, setTranscript] = useState<Utterance[]>([]);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const clientRef = useRef<RetellWebClient | null>(null);
+
+  const loadBookings = useCallback(async () => {
+    const { data } = await apiClient.getBookings();
+    if (data) setBookings(data);
+  }, []);
+
+  // Show what's already been booked, and refresh once a call ends — the
+  // booking (if any) was confirmed to the caller mid-call, this just makes
+  // it visible without a manual reload.
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
 
   // Set up the SDK client and its event listeners once.
   useEffect(() => {
@@ -37,6 +50,7 @@ export default function VoiceAgent() {
     client.on('call_ended', () => {
       setCallState('ended');
       setAgentSpeaking(false);
+      loadBookings();
     });
     client.on('error', (error: unknown) => {
       console.error('Voice call error:', error);
@@ -165,6 +179,34 @@ export default function VoiceAgent() {
                   >
                     {turn.content}
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Confirmed bookings — persisted records, not just a stub trigger */}
+        {bookings.length > 0 && (
+          <div className={`${glassCard} p-6`}>
+            <h2 className="text-sm font-semibold text-slate-300 mb-4 uppercase tracking-wider flex items-center gap-2">
+              <CalendarCheck className="h-4 w-4" /> Recent Bookings
+            </h2>
+            <div className="space-y-2">
+              {bookings.map((b) => (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm"
+                >
+                  <div>
+                    <p className="text-slate-200 font-medium">{b.service}</p>
+                    <p className="text-slate-500 text-xs">
+                      {b.customer_name || 'Unknown caller'} · {b.preferred_day || 'day TBD'}
+                      {b.preferred_time ? `, ${b.preferred_time}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {b.status}
+                  </span>
                 </div>
               ))}
             </div>

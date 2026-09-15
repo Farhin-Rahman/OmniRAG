@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from ai.llm_client import LLMClient
 from config.settings import settings
+from db.bookings import list_bookings, record_booking
 from services.embedding_service import embedding_service
 from services.db.qdrant_service import get_qdrant_service
 
@@ -37,6 +38,25 @@ router = APIRouter(prefix="/voice", tags=["Voice Agent"])
 class WebCallResponse(BaseModel):
     access_token: str
     call_id: str
+
+
+class BookingResponse(BaseModel):
+    id: int
+    call_id: str | None
+    service: str
+    preferred_day: str | None
+    preferred_time: str | None
+    customer_name: str | None
+    status: str
+    created_at: str
+
+
+@router.get("/bookings", response_model=list[BookingResponse])
+def list_bookings_endpoint(limit: int = 20):
+    """Bookings the voice agent has actually confirmed — proof the
+    automation trigger produces a real, persisted record, not just a
+    POST to a stub endpoint."""
+    return list_bookings(limit=limit)
 
 
 @router.post("/web-call", response_model=WebCallResponse)
@@ -55,7 +75,7 @@ async def create_web_call():
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                "https://api.retellai.com/v2/create-web-call",
+                "https://api.retellai.com/v3/create-web-call",
                 headers={
                     "Authorization": f"Bearer {settings.retell_api_key}",
                     "Content-Type": "application/json",
@@ -376,6 +396,13 @@ async def _handle_turn(
         )
 
         if booked:
+            record_booking(
+                service=intent["service"],
+                call_id=call_id,
+                preferred_day=intent.get("preferred_day"),
+                preferred_time=intent.get("preferred_time"),
+                customer_name=intent.get("customer_name"),
+            )
             content = f"You're all set for {intent['service']} on {intent['preferred_day']}. Anything else?"
         else:
             # Failure mode: don't pretend it worked — degrade to a human handoff.
