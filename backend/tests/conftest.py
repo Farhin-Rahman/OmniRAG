@@ -74,3 +74,12 @@ sys.modules["cv2"] = MagicMock()
 sys.modules["celery"] = MagicMock()
 sys.modules["pika"] = MagicMock()
 sys.modules["redis"] = MagicMock()
+
+# Mock Firebase Admin: routes/webhooks.py imports it at module level for
+# Bearer-token verification, but no test exercises that path (the webhook
+# tests cover the WEBHOOK_SECRET header check). Not in requirements-ci.txt
+# — same tradeoff as the OCR/ML libs above, mocked rather than installed
+# since nothing here actually needs real Firebase verification.
+sys.modules["firebase_admin"] = MagicMock()
+sys.modules["firebase_admin.auth"] = MagicMock()
+sys.modules["firebase_admin.credentials"] = MagicMock()
