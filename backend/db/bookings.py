@@ -53,7 +53,12 @@ def init_bookings_db() -> None:
         # address/phone added after the initial release — guarded ALTER so
         # this migrates an already-created table (e.g. on a running
         # deployment) in place, same pattern as db/recommendations.py.
-        for column in ("address TEXT", "phone TEXT"):
+        for column in (
+            "address TEXT",
+            "phone TEXT",
+            "follow_up_call_id TEXT",
+            "follow_up_triggered_at TEXT",
+        ):
             try:
                 conn.execute(f"ALTER TABLE bookings ADD COLUMN {column}")
             except sqlite3.OperationalError as e:
@@ -80,7 +85,16 @@ def record_booking(
                 (call_id, service, address, phone, customer_name, preferred_day, preferred_time, status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
             """,
-            (call_id, service, address, phone, customer_name, preferred_day, preferred_time, timestamp),
+            (
+                call_id,
+                service,
+                address,
+                phone,
+                customer_name,
+                preferred_day,
+                preferred_time,
+                timestamp,
+            ),
         )
         row_id = cursor.lastrowid
 
@@ -103,3 +117,33 @@ def list_bookings(limit: int = 20) -> list[dict]:
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_booking(booking_id: int) -> Optional[dict]:
+    """Single booking by id, or None if it doesn't exist."""
+    with _connect() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT id, call_id, service, address, phone, customer_name,
+                   preferred_day, preferred_time, status, created_at
+            FROM bookings
+            WHERE id = ?
+            """,
+            (booking_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def record_follow_up_call(booking_id: int, call_id: str) -> None:
+    """Log that an outbound dispatch-confirmation call was triggered for
+    this booking. Best-effort bookkeeping only — the call itself has
+    already been placed with Retell by the time this runs, so a failure
+    here shouldn't be treated as the outbound call having failed."""
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE bookings SET follow_up_call_id = ?, follow_up_triggered_at = ? WHERE id = ?",
+            (call_id, timestamp, booking_id),
+        )
+    logger.info(f"Follow-up call recorded: booking_id={booking_id} call_id={call_id}")

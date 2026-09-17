@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     # to start web-call sessions on behalf of the OmniRAG frontend.
     retell_api_key: str = os.getenv("RETELL_API_KEY", "")
     retell_agent_id: str = os.getenv("RETELL_AGENT_ID", "")
+    # A number purchased/imported in Retell — required for outbound calls
+    # only (create_web_call doesn't need one). Not set up yet as of this
+    # writing; the outbound route checks for it and fails cleanly if absent
+    # rather than assuming it exists.
+    retell_from_number: str = os.getenv("RETELL_FROM_NUMBER", "")
 
     # Firebase Auth — service account JSON lives at backend/gcp-service-account.json
     # (gitignored, never committed). Override the path via env if needed.

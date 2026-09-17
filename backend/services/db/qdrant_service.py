@@ -36,8 +36,12 @@ class QdrantSearchService:
         self.port = port or settings.qdrant_port
 
         if settings.qdrant_api_key:
-            self.client = QdrantClient(url=settings.qdrant_uri, api_key=settings.qdrant_api_key)
-            logger.info("Qdrant service initialized via cloud URL: %s", settings.qdrant_uri)
+            self.client = QdrantClient(
+                url=settings.qdrant_uri, api_key=settings.qdrant_api_key
+            )
+            logger.info(
+                "Qdrant service initialized via cloud URL: %s", settings.qdrant_uri
+            )
         else:
             self.client = QdrantClient(host=self.host, port=self.port)
             logger.info("Qdrant service initialized: %s:%s", self.host, self.port)
@@ -373,8 +377,12 @@ class QdrantService:
     ) -> None:
         try:
             if settings.qdrant_api_key:
-                self.client = QdrantClient(url=settings.qdrant_uri, api_key=settings.qdrant_api_key)
-                logger.info("Connected to Qdrant Cloud successfully at %s", settings.qdrant_uri)
+                self.client = QdrantClient(
+                    url=settings.qdrant_uri, api_key=settings.qdrant_api_key
+                )
+                logger.info(
+                    "Connected to Qdrant Cloud successfully at %s", settings.qdrant_uri
+                )
             else:
                 self.client = QdrantClient(host=host, port=port)
                 logger.info("Connected to Qdrant successfully at %s:%s", host, port)

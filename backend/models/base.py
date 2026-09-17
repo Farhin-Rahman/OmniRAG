@@ -9,17 +9,14 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     DateTime,
-    Float,
-    ForeignKey,
-    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base
 
-from .db_types import JSONB, UUID
+from .db_types import UUID
 
 Base = declarative_base()
 
@@ -67,14 +64,6 @@ class Document(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
-    # Relationships
-    chunks = relationship(
-        "Chunk",
-        back_populates="document",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
     __table_args__ = (
         # No explicit Index("ix_documents_status", ...) here: the `status`
         # Column above already has index=True, which SQLAlchemy auto-names
@@ -85,54 +74,3 @@ class Document(Base):
 
     def __repr__(self):
         return f"<Document(doc_id={self.doc_id}, doc_name={self.doc_name}, status={self.status})>"
-
-
-class Chunk(Base):
-    """Text chunks from documents with layout and provenance.
-
-    Chunks are indexed in Qdrant with vector_id linkage.
-    Span represents byte/character offsets in source document.
-    """
-
-    __tablename__ = "chunks"
-
-    # Primary key
-    chunk_id = Column(UUID(), primary_key=True, default=uuid.uuid4)
-
-    # Document reference
-    doc_id = Column(
-        UUID(),
-        ForeignKey("documents.doc_id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    # Content
-    text = Column(Text, nullable=False)
-    checksum = Column(String(64), nullable=False)  # SHA1 of text for dedup
-
-    # Position in document
-    page = Column(Integer, nullable=False)
-    section = Column(String(255), nullable=True)
-    span = Column(JSONB, nullable=False)  # {"start": int, "end": int}
-
-    # Layout metadata
-    layout = Column(JSONB, nullable=True)  # {"bbox": [x0,y0,x1,y1], "block_type": str}
-    overlap = Column(Float, nullable=False, default=0.0)
-
-    # Vector indexing
-    vector_id = Column(String(128), nullable=True, index=True)  # Qdrant point ID
-    embedding_id = Column(String(64), nullable=False, index=True)
-
-    # Additional metadata
-    chunk_metadata = Column(JSONB, nullable=True)
-
-    # Relationships
-    document = relationship("Document", back_populates="chunks")
-
-    __table_args__ = (Index("ix_chunks_doc_page", "doc_id", "page"),)
-
-    def __repr__(self):
-        return (
-            f"<Chunk(chunk_id={self.chunk_id}, doc_id={self.doc_id}, page={self.page})>"
-        )

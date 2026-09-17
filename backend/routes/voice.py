@@ -27,7 +27,12 @@ from pydantic import BaseModel
 
 from ai.llm_client import LLMClient
 from config.settings import settings
-from db.bookings import list_bookings, record_booking
+from db.bookings import (
+    get_booking,
+    list_bookings,
+    record_booking,
+    record_follow_up_call,
+)
 from services.embedding_service import embedding_service
 from services.db.qdrant_service import get_qdrant_service
 
@@ -96,6 +101,101 @@ async def create_web_call():
         raise HTTPException(status_code=502, detail="Failed to start voice call")
 
     return WebCallResponse(access_token=data["access_token"], call_id=data["call_id"])
+
+
+class OutboundFollowUpRequest(BaseModel):
+    booking_id: int
+    to_number: str  # E.164, e.g. "+15875551234" — not derived from the
+    # booking's captured `phone`, since that field is whatever the caller
+    # said verbatim during the call (see the intent-extraction rules
+    # below) and isn't guaranteed to be a dialable, correctly-formatted
+    # number.
+
+
+class OutboundFollowUpResponse(BaseModel):
+    call_id: str
+    status: str
+
+
+@router.post("/outbound-follow-up", response_model=OutboundFollowUpResponse)
+async def trigger_outbound_follow_up(payload: OutboundFollowUpRequest):
+    """
+    Place an outbound call to confirm an emergency dispatch time against an
+    existing booking (e.g. "your technician is still on for the 2-hour
+    window — can you confirm someone will be home?").
+
+    Deliberately a separate Retell endpoint from create_web_call above:
+    outbound calling is documented at v2/create-phone-call, not v3 — the
+    v2->v3 migration above was a real, Retell-issued deprecation notice
+    that only covers create-web-call, and there is no equivalent notice
+    for the phone-call endpoint. Using what's actually documented per
+    endpoint rather than assuming the same version applies everywhere.
+
+    Implementation complete — unverified live pending telephony credit
+    check. Outbound calling requires a purchased/imported Retell number
+    (RETELL_FROM_NUMBER) and spends per-minute call credit; neither has
+    been confirmed live as of this writing, so this has only been
+    exercised against Retell's documented request/response shape, not a
+    real phone call. Not claiming a test result that hasn't happened.
+    """
+    if not settings.retell_api_key or not settings.retell_agent_id:
+        raise HTTPException(status_code=503, detail="Voice agent is not configured")
+    if not settings.retell_from_number:
+        raise HTTPException(
+            status_code=503,
+            detail="Outbound calling is not configured (RETELL_FROM_NUMBER unset)",
+        )
+
+    booking = get_booking(payload.booking_id)
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://api.retellai.com/v2/create-phone-call",
+                headers={
+                    "Authorization": f"Bearer {settings.retell_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from_number": settings.retell_from_number,
+                    "to_number": payload.to_number,
+                    "override_agent_id": settings.retell_agent_id,
+                    "retell_llm_dynamic_variables": {
+                        "customer_name": booking.get("customer_name") or "there",
+                        "service": booking["service"],
+                        "address": booking.get("address") or "",
+                    },
+                    "metadata": {
+                        "booking_id": payload.booking_id,
+                        "purpose": "dispatch_confirmation",
+                    },
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            f"Retell create-phone-call failed: {e.response.status_code} - {e.response.text}"
+        )
+        raise HTTPException(status_code=502, detail="Failed to trigger outbound call")
+    except Exception as e:
+        logger.error(f"Retell create-phone-call error: {e}")
+        raise HTTPException(status_code=502, detail="Failed to trigger outbound call")
+
+    call_id = data.get("call_id", "")
+    try:
+        record_follow_up_call(payload.booking_id, call_id)
+    except Exception as e:
+        # The call has already been accepted by Retell at this point — a
+        # local logging failure shouldn't turn into a 502 for a call that
+        # actually went out. Log and degrade, don't block the response.
+        logger.error(
+            f"Failed to record follow-up call for booking {payload.booking_id}: {e}"
+        )
+
+    return OutboundFollowUpResponse(call_id=call_id, status="triggered")
 
 
 SYSTEM_INSTRUCTION = (
@@ -264,6 +364,31 @@ def _start_stream_worker(llm: LLMClient, prompt: str) -> asyncio.Queue:
     return queue
 
 
+BOOKING_REQUIRED_FIELDS = ("service", "address", "phone", "customer_name")
+
+
+def _missing_booking_fields(intent: dict) -> list[str]:
+    """Which required booking fields are actually missing.
+
+    Deliberately does not trust the model's self-reported `missing_fields`
+    — smaller models sometimes claim nothing's missing while still leaving
+    a field null. Independently verify every required field actually has
+    a value.
+    """
+    missing = [f for f in BOOKING_REQUIRED_FIELDS if not intent.get(f)]
+    # A non-null address isn't necessarily a *usable* one — tested this
+    # directly: the model will capture a vague phrase like "somewhere
+    # near downtown" verbatim (correctly not fabricating a fake precise
+    # address) but won't reliably flag it as missing on its own. A real
+    # North American street address always has a number in it; treat an
+    # address with none as still missing rather than trust it blindly.
+    if "address" not in missing and not any(
+        ch.isdigit() for ch in (intent.get("address") or "")
+    ):
+        missing.append("address")
+    return missing
+
+
 async def _trigger_booking_webhook(details: dict, call_id: str) -> bool:
     if not settings.n8n_booking_webhook_url:
         logger.warning(
@@ -347,21 +472,7 @@ async def _handle_turn(
         }
 
     if intent["intent"] == "book_appointment":
-        required = ("service", "address", "phone", "customer_name")
-        # Don't just trust the model's self-reported "missing_fields" — smaller
-        # models sometimes claim nothing's missing while still leaving a field
-        # null. Independently verify every required field actually has a value.
-        missing = [f for f in required if not intent.get(f)]
-        # A non-null address isn't necessarily a *usable* one — tested this
-        # directly: the model will capture a vague phrase like "somewhere
-        # near downtown" verbatim (correctly not fabricating a fake precise
-        # address) but won't reliably flag it as missing on its own. A real
-        # North American street address always has a number in it; treat an
-        # address with none as still missing rather than trust it blindly.
-        if "address" not in missing and not any(
-            ch.isdigit() for ch in (intent.get("address") or "")
-        ):
-            missing.append("address")
+        missing = _missing_booking_fields(intent)
         if missing:
             ask = f"Happy to book that — could you tell me the {missing[0].replace('_', ' ')}?"
             await websocket.send_text(
@@ -438,7 +549,9 @@ async def _handle_turn(
             )
             # preferred_day is optional now (never blocks a booking), so the
             # confirmation can't assume it's there.
-            when = f" on {intent['preferred_day']}" if intent.get("preferred_day") else ""
+            when = (
+                f" on {intent['preferred_day']}" if intent.get("preferred_day") else ""
+            )
             content = f"You're all set for {intent['service']}{when} at {intent['address']}. Anything else?"
         else:
             # Failure mode: don't pretend it worked — degrade to a human handoff.
