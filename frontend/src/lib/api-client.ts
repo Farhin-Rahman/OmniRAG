@@ -198,8 +198,8 @@ class ApiClient {
     }
   }
 
-  // --- Document Sync ---
-  async getDocumentStatus(folderPath?: string, minDate?: string): Promise<ApiResponse<{ is_syncing: boolean; files: DocumentStatusFile[] }>> {
+  // --- Documents ---
+  async getDocumentStatus(): Promise<ApiResponse<{ files: DocumentStatusFile[] }>> {
     try {
       const response = await fetch(`${API_BASE_URL}/documents`);
       if (!response.ok) throw new Error("Failed to fetch documents");
@@ -207,32 +207,16 @@ class ApiClient {
 
       const mappedFiles: DocumentStatusFile[] = (data.documents || []).map((doc: RawDocumentRecord) => ({
         item_id: doc.doc_id,
+        doc_id: doc.doc_id,
         fileName: doc.doc_name,
         filestatus: doc.status,
         filepath: "/Local Uploads"
       }));
 
-      return { 
-        data: { 
-          is_syncing: false, 
-          files: mappedFiles 
-        } 
-      };
+      return { data: { files: mappedFiles } };
     } catch (error) {
       return { error: { message: error instanceof Error ? error.message : "Network error", status: 0 } };
     }
-  }
-
-  async triggerDocumentSync(): Promise<ApiResponse<{ is_syncing: boolean; files: DocumentStatusFile[] }>> {
-    return { data: { is_syncing: true, files: [] } };
-  }
-
-  async syncSingleFile(itemId: string): Promise<ApiResponse<void>> {
-    return { data: undefined };
-  }
-
-  async syncBatch(itemIds: string[]): Promise<ApiResponse<{ status: string; message: string }>> {
-    return { data: { status: "success", message: "Batch sync triggered" } };
   }
 
   // --- Trust & Safety moderation (real backend, RBAC-gated) ---

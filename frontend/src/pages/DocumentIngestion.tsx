@@ -3,16 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient as api, onSessionExpired, type DocumentStatusFile } from '@/lib/api-client';
 
 interface DocumentStatus {
-    is_syncing: boolean;
     files: DocumentStatusFile[];
 }
 import { Button } from '@/components/ui/button';
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { FileText, Download, CloudOff, ArrowLeft, FolderSearch, Calendar as CalendarIcon, UploadCloud, FileUp, Sparkles, Database, CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { FileText, ArrowLeft, FolderSearch, FileUp, Sparkles, Database, CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import DocumentViewer from '@/components/DocumentViewer';
 
@@ -26,9 +20,6 @@ export default function DocumentIngestion() {
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [viewingDoc, setViewingDoc] = useState<{ docId: string; docName: string } | null>(null);
-    const [targetFolder, setTargetFolder] = useState("");
-    const [minDate, setMinDate] = useState<Date | undefined>(undefined);
-    const [syncingFiles, setSyncingFiles] = useState<Set<string>>(new Set());
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     // Handle session expiry - redirect to auth page
@@ -43,18 +34,12 @@ export default function DocumentIngestion() {
     const fetchStatus = async () => {
         setLoading(true);
         try {
-            const dateStr = minDate ? format(minDate, "yyyy-MM-dd") : undefined;
-            const res = await api.getDocumentStatus(targetFolder, dateStr);
+            const res = await api.getDocumentStatus();
             if (res.error) {
                 console.error(res.error);
                 return;
             }
             setStatus(res.data);
-            if (res.data?.is_syncing) {
-                setSyncing(true);
-            } else {
-                setSyncing(false);
-            }
         } finally {
             setLoading(false);
         }
@@ -63,39 +48,6 @@ export default function DocumentIngestion() {
     useEffect(() => {
         fetchStatus();
     }, []);
-
-    const handleSyncBatch = async () => {
-        const itemIds = files
-            .map((f: DocumentStatusFile) => f.item_id)
-            .filter((id: string) => id); // Filter out null/undefined item_ids
-
-        if (itemIds.length === 0) {
-            toast.error("No files listed to sync");
-            return;
-        }
-
-        setSyncing(true);
-        const res = await api.syncBatch(itemIds);
-        if (res.error) {
-            toast.error(res.error.message);
-            setSyncing(false);
-        } else {
-            toast.success(`Started syncing ${itemIds.length} files`);
-            setTimeout(fetchStatus, 1000);
-        }
-    };
-
-    const handleSync = async () => {
-        setSyncing(true);
-        const res = await api.triggerDocumentSync();
-        if (res.error) {
-            toast.error(res.error.message);
-            setSyncing(false);
-        } else {
-            toast.success("Sync started");
-            fetchStatus();
-        }
-    };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -141,46 +93,12 @@ export default function DocumentIngestion() {
         }
     };
 
-    const handleSyncSingle = async (itemId: string, fileName: string) => {
-        if (!itemId) {
-            toast.error("Cannot sync file: Missing Item ID");
-            return;
-        }
-        
-        // Add to syncing set to disable button
-        setSyncingFiles(prev => new Set(prev).add(itemId));
-        
-        toast.promise(api.syncSingleFile(itemId), {
-            loading: `Syncing ${fileName}...`,
-            success: () => {
-                fetchStatus();
-                // Remove from syncing set
-                setSyncingFiles(prev => {
-                    const next = new Set(prev);
-                    next.delete(itemId);
-                    return next;
-                });
-                return `Successfully synced ${fileName}`;
-            },
-            error: (err) => {
-                // Remove from syncing set on error too
-                setSyncingFiles(prev => {
-                    const next = new Set(prev);
-                    next.delete(itemId);
-                    return next;
-                });
-                return `Failed to sync: ${err.message}`;
-            }
-        });
-    };
-
     // Counts
     const files = status?.files || [];
     const readyCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'ready').length;
     const processingCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'processing').length;
     const queuedCount = files.filter((f: DocumentStatusFile) => ['queued', 'pending'].includes(f.filestatus)).length;
     const errorCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'error').length;
-    const unsyncedCount = files.filter((f: DocumentStatusFile) => f.filestatus === 'not_synced').length;
 
     return (
         <div className={glassContainer}>
@@ -261,59 +179,12 @@ export default function DocumentIngestion() {
                     </div>
                 </div>
 
-                {/* Filter Controls */}
-                <div className={`${glassCard} py-3 px-6 flex items-center gap-4`}>
-                    <div className="flex-1 flex items-center gap-3">
-                        <FolderSearch className="h-4 w-4 text-gray-400" />
-                        <Input 
-                            placeholder="Target Folder (e.g. CEO Office/IR/IPO) - Leave empty for recent files" 
-                            value={targetFolder}
-                            onChange={(e) => setTargetFolder(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && fetchStatus()}
-                            className="bg-transparent border-none shadow-none focus-visible:ring-0 text-gray-700 placeholder:text-gray-400 h-8 p-0"
-                        />
-                    </div>
-                    <div className="h-6 w-px bg-gray-300/50" />
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant={"outline"}
-                                className={cn(
-                                    "w-[240px] justify-start text-left font-normal bg-transparent border-none shadow-none hover:bg-transparent hover:text-blue-600 p-0 h-8",
-                                    !minDate && "text-muted-foreground"
-                                )}
-                            >
-                                <CalendarIcon className="mr-2 h-4 w-4 text-gray-400" />
-                                {minDate ? format(minDate, "PPP") : <span className="text-gray-400">Filter by Modified Date</span>}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="end">
-                            <Calendar
-                                mode="single"
-                                selected={minDate}
-                                onSelect={setMinDate}
-                                initialFocus
-                            />
-                        </PopoverContent>
-                    </Popover>
-                    <div className="h-6 w-px bg-gray-300/50" />
-                    <Button 
-                         variant="ghost" 
-                         size="sm"
-                         onClick={fetchStatus}
-                         className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 -mr-2"
-                    >
-                        Apply Filters
-                    </Button>
-                </div>
-
                 {/* Cards Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <StatusCard title="READY" count={readyCount} icon={<CheckCircle className="text-emerald-500 h-4 w-4" />} />
                     <StatusCard title="PROCESSING" count={processingCount} icon={<RefreshCw className="text-blue-500 h-4 w-4 animate-spin-slow" />} />
                     <StatusCard title="QUEUED" count={queuedCount} icon={<Clock className="text-amber-500 h-4 w-4" />} />
                     <StatusCard title="ERRORS" count={errorCount} icon={<AlertCircle className="text-rose-500 h-4 w-4" />} />
-                    <StatusCard title="UNSYNCED" count={unsyncedCount} icon={<CloudOff className="text-gray-400 h-4 w-4" />} />
                 </div>
 
                 {/* Main Content */}
@@ -353,49 +224,30 @@ export default function DocumentIngestion() {
                                     {files.map((file: DocumentStatusFile, i: number) => (
                                         <div
                                             key={i}
-                                            className={`flex items-center justify-between p-4 bg-white/[0.03] hover:bg-white/[0.08] rounded-xl transition-all duration-300 border border-white/5 hover:border-indigo-500/30 shadow-sm group cursor-pointer ${file.filestatus === 'not_synced' ? 'opacity-50 hover:opacity-100' : ''}`}
+                                            className="flex items-center justify-between p-4 bg-white/[0.03] hover:bg-white/[0.08] rounded-xl transition-all duration-300 border border-white/5 hover:border-indigo-500/30 shadow-sm group cursor-pointer"
                                             onClick={() => file.doc_id && setViewingDoc({ docId: file.doc_id, docName: file.fileName })}
                                         >
                                             <div className="flex items-center gap-4 overflow-hidden">
-                                                <div className={`p-3 rounded-xl shadow-inner border border-white/10 ${file.filestatus === 'not_synced' ? 'bg-slate-800' : 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20'}`}>
-                                                    <FileText className={`h-5 w-5 ${file.filestatus === 'not_synced' ? 'text-slate-500' : 'text-indigo-300'}`} />
+                                                <div className="p-3 rounded-xl shadow-inner border border-white/10 bg-gradient-to-br from-indigo-500/20 to-purple-500/20">
+                                                    <FileText className="h-5 w-5 text-indigo-300" />
                                                 </div>
                                                 <div className="flex flex-col gap-1 min-w-0">
-                                                    <span className={`text-base font-bold truncate ${file.filestatus === 'not_synced' ? 'text-slate-500' : 'text-slate-200 group-hover:text-white group-hover:translate-x-1'} transition-all duration-300`}>{file.fileName}</span>
+                                                    <span className="text-base font-bold truncate text-slate-200 group-hover:text-white group-hover:translate-x-1 transition-all duration-300">{file.fileName}</span>
                                                     <span className="text-[11px] text-slate-500 truncate max-w-[400px] font-mono flex items-center gap-1.5">
                                                         <FolderSearch className="h-3 w-3" />
                                                         {file.filepath || '/Local Uploads'}
                                                     </span>
                                                 </div>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-4">
-                                                <span className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-widest border shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] ${
-                                                    file.filestatus === 'ready' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
-                                                    file.filestatus === 'processing' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 animate-pulse' :
-                                                    file.filestatus === 'error' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' :
-                                                    file.filestatus === 'not_synced' ? 'bg-slate-500/20 text-slate-400 border-slate-500/30' :
-                                                    'bg-slate-800 text-slate-300 border-slate-700'
-                                                }`}>
-                                                    {file.filestatus.toUpperCase().replace('_', ' ')}
-                                                </span>
 
-                                                {file.filestatus === 'not_synced' && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        disabled={syncingFiles.has(file.item_id)}
-                                                        className="h-7 px-3 text-xs bg-white hover:bg-blue-50 hover:text-blue-600 border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleSyncSingle(file.item_id, file.fileName);
-                                                        }}
-                                                    >
-                                                        <Download className={`h-3 w-3 mr-1.5 ${syncingFiles.has(file.item_id) ? 'animate-pulse' : ''}`} /> 
-                                                        {syncingFiles.has(file.item_id) ? 'Syncing...' : 'Sync'}
-                                                    </Button>
-                                                )}
-                                            </div>
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-widest border shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] ${
+                                                file.filestatus === 'ready' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                                                file.filestatus === 'processing' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 animate-pulse' :
+                                                file.filestatus === 'error' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' :
+                                                'bg-slate-800 text-slate-300 border-slate-700'
+                                            }`}>
+                                                {file.filestatus.toUpperCase().replace('_', ' ')}
+                                            </span>
                                         </div>
                                     ))}
                                 </div>

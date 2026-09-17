@@ -13,7 +13,11 @@ export default defineConfig({
     workers: process.env.CI ? 1 : undefined,
     reporter: "html",
     use: {
-        baseURL: "http://localhost:3000",
+        // Matches the actual Vite dev server port (vite.config.ts), not the
+        // create-react-app default this was apparently copied from — the
+        // mismatch meant this config could never have reached a running
+        // app; confirmed while auditing test coverage.
+        baseURL: "http://localhost:8000",
         trace: "on-first-retry",
         screenshot: "only-on-failure",
     },
@@ -28,7 +32,7 @@ export default defineConfig({
     /* Run local dev server before starting tests */
     webServer: {
         command: "npm run dev",
-        url: "http://localhost:3000",
+        url: "http://localhost:8000",
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000,
     },
