@@ -366,6 +366,75 @@ def _start_stream_worker(llm: LLMClient, prompt: str) -> asyncio.Queue:
 
 
 BOOKING_REQUIRED_FIELDS = ("service", "address", "phone", "customer_name")
+BOOKING_FIELDS = BOOKING_REQUIRED_FIELDS + ("preferred_day", "preferred_time")
+
+# Speech-to-text often returns numbers as words ("four five two one McEwan
+# Road"), not digits — a digit-only check rejected real addresses forever.
+_DIGIT_WORDS = {
+    "zero": "0",
+    "oh": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+}
+_NUMBER_WORDS = set(_DIGIT_WORDS) | {
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+    "hundred",
+    "thousand",
+}
+_DIGIT_WORD_ALT = "|".join(_DIGIT_WORDS)
+_DIGIT_RUN = re.compile(
+    rf"\b(?:{_DIGIT_WORD_ALT})(?:[\s,.-]+(?:{_DIGIT_WORD_ALT}))+\b", re.IGNORECASE
+)
+
+
+def _spoken_digits_to_numerals(text: str) -> str:
+    """ "four five two one McEwan Road" -> "4521 McEwan Road". Only runs of
+    two or more digit words convert, so an ordinary "one" in a sentence is
+    left alone."""
+    return _DIGIT_RUN.sub(
+        lambda m: "".join(
+            _DIGIT_WORDS[w.lower()] for w in re.findall(r"[A-Za-z]+", m.group(0))
+        ),
+        text,
+    )
+
+
+def _has_street_number(address: str) -> bool:
+    """A real street address has a number — as digits, or spoken."""
+    normalized = _spoken_digits_to_numerals(address or "")
+    if any(ch.isdigit() for ch in normalized):
+        return True
+    words = re.findall(r"[a-z]+", normalized.lower())
+    if words and words[0] in _NUMBER_WORDS:  # "five McEwan Road"
+        return True
+    # "twenty one fifty McEwan Road" — two or more number words in a row
+    return any(
+        a in _NUMBER_WORDS and b in _NUMBER_WORDS for a, b in zip(words, words[1:])
+    )
 
 
 def _missing_booking_fields(intent: dict) -> list[str]:
@@ -381,13 +450,51 @@ def _missing_booking_fields(intent: dict) -> list[str]:
     # directly: the model will capture a vague phrase like "somewhere
     # near downtown" verbatim (correctly not fabricating a fake precise
     # address) but won't reliably flag it as missing on its own. A real
-    # North American street address always has a number in it; treat an
-    # address with none as still missing rather than trust it blindly.
-    if "address" not in missing and not any(
-        ch.isdigit() for ch in (intent.get("address") or "")
-    ):
-        missing.append("address")
+    # address always has a street number; treat one with none as still
+    # missing. Asked first (not last) so the caller isn't left wondering
+    # why their answer was ignored.
+    if "address" not in missing and not _has_street_number(intent["address"]):
+        missing.insert(0, "address")
     return missing
+
+
+def _merge_booking_fields(state: dict, intent: dict) -> dict:
+    """Fold this turn's extraction into what the call has already
+    established. The classifier re-reads the transcript from scratch each
+    turn and a small model sometimes drops a detail the caller already gave
+    (asking for the service twice) — a field once captured is never
+    forgotten, and a usable address is never replaced by a vaguer one."""
+    for field in BOOKING_FIELDS:
+        new = intent.get(field)
+        if not new:
+            continue
+        new = str(new)
+        if field in ("address", "phone"):
+            new = _spoken_digits_to_numerals(new)
+        if (
+            field == "address"
+            and state.get("address")
+            and _has_street_number(state["address"])
+            and not _has_street_number(new)
+        ):
+            continue
+        state[field] = new
+    return {**intent, **{f: state.get(f) for f in BOOKING_FIELDS}}
+
+
+_FIELD_PHRASES = {
+    "service": "what service you need",
+    "address": "the address for the visit",
+    "phone": "the best phone number",
+    "customer_name": "your name",
+}
+
+
+def _ask_for(field: str, vague_address: bool, first_ask: bool) -> str:
+    if field == "address" and vague_address:
+        return "I didn't catch a street number. Could you give me the full address, including the number?"
+    lead = "Happy to book that — could you" if first_ask else "Got it. Could you"
+    return f"{lead} tell me {_FIELD_PHRASES[field]}?"
 
 
 async def _trigger_booking_webhook(details: dict, call_id: str) -> bool:
@@ -410,7 +517,7 @@ async def _trigger_booking_webhook(details: dict, call_id: str) -> bool:
 
 
 async def _handle_turn(
-    websocket: WebSocket, llm: LLMClient, event: dict, call_id: str
+    websocket: WebSocket, llm: LLMClient, event: dict, call_id: str, state: dict
 ) -> None:
     response_id = event.get("response_id")
     transcript = event.get("transcript", [])
@@ -429,22 +536,6 @@ async def _handle_turn(
         )
         return
 
-    # Local CPU inference can take several seconds per call (intent
-    # classification, then generation). Speak a filler immediately so the
-    # caller hears something right away instead of dead air — Retell
-    # concatenates streamed chunks into one continuous utterance, so this
-    # reads as a natural "let me check" lead-in, not a separate reply.
-    await websocket.send_text(
-        json.dumps(
-            {
-                "response_type": "response",
-                "response_id": response_id,
-                "content": "Let me check on that. ",
-                "content_complete": False,
-            }
-        )
-    )
-
     # Skip the classification LLM call entirely when the message plainly
     # isn't a booking request — on CPU-only local inference, every call
     # costs several real seconds, and the RAG path already needs its own
@@ -456,8 +547,10 @@ async def _handle_turn(
     # caller has said "I'd like to book an appointment", their follow-up
     # turns answering "which service?" naturally won't repeat that word,
     # but the conversation is still a booking flow in progress.
-    if _looks_like_booking_request(latest_message) or _looks_like_booking_request(
-        conversation
+    if (
+        state.get("in_booking")
+        or _looks_like_booking_request(latest_message)
+        or _looks_like_booking_request(conversation)
     ):
         intent = await _classify_intent(llm, conversation, latest_message)
     else:
@@ -472,10 +565,20 @@ async def _handle_turn(
             "missing_fields": [],
         }
 
+    # Once a booking is under way, a bare answer like "it's repair" or a
+    # street address is still part of it, even if the classifier labels the
+    # turn "other". A genuine question mid-booking still gets answered below.
+    if state.get("in_booking") and intent["intent"] == "other":
+        intent["intent"] = "book_appointment"
+
     if intent["intent"] == "book_appointment":
-        missing = _missing_booking_fields(intent)
+        state["in_booking"] = True
+        details = _merge_booking_fields(state, intent)
+        missing = _missing_booking_fields(details)
         if missing:
-            ask = f"Happy to book that — could you tell me the {missing[0].replace('_', ' ')}?"
+            vague_address = missing[0] == "address" and bool(details.get("address"))
+            ask = _ask_for(missing[0], vague_address, first_ask=not state.get("asked"))
+            state["asked"] = True
             await websocket.send_text(
                 json.dumps(
                     {
@@ -488,6 +591,7 @@ async def _handle_turn(
             )
             return
 
+        payload = {k: details[k] for k in BOOKING_FIELDS}
         tool_call_id = f"book-{call_id}-{response_id}"
         await websocket.send_text(
             json.dumps(
@@ -495,37 +599,12 @@ async def _handle_turn(
                     "response_type": "tool_call_invocation",
                     "tool_call_id": tool_call_id,
                     "name": "book_appointment",
-                    "arguments": json.dumps(
-                        {
-                            k: intent[k]
-                            for k in (
-                                "service",
-                                "address",
-                                "phone",
-                                "customer_name",
-                                "preferred_day",
-                                "preferred_time",
-                            )
-                        }
-                    ),
+                    "arguments": json.dumps(payload),
                 }
             )
         )
 
-        booked = await _trigger_booking_webhook(
-            {
-                k: intent[k]
-                for k in (
-                    "service",
-                    "address",
-                    "phone",
-                    "customer_name",
-                    "preferred_day",
-                    "preferred_time",
-                )
-            },
-            call_id,
-        )
+        booked = await _trigger_booking_webhook(payload, call_id)
 
         await websocket.send_text(
             json.dumps(
@@ -540,23 +619,27 @@ async def _handle_turn(
 
         if booked:
             record_booking(
-                service=intent["service"],
+                service=details["service"],
                 call_id=call_id,
-                address=intent.get("address"),
-                phone=intent.get("phone"),
-                customer_name=intent.get("customer_name"),
-                preferred_day=intent.get("preferred_day"),
-                preferred_time=intent.get("preferred_time"),
+                address=details.get("address"),
+                phone=details.get("phone"),
+                customer_name=details.get("customer_name"),
+                preferred_day=details.get("preferred_day"),
+                preferred_time=details.get("preferred_time"),
             )
             # preferred_day is optional now (never blocks a booking), so the
             # confirmation can't assume it's there.
             when = (
-                f" on {intent['preferred_day']}" if intent.get("preferred_day") else ""
+                f" on {details['preferred_day']}"
+                if details.get("preferred_day")
+                else ""
             )
-            content = f"You're all set for {intent['service']}{when} at {intent['address']}. Anything else?"
+            content = f"You're all set for {details['service']}{when} at {details['address']}. Anything else?"
+            state.clear()
         else:
             # Failure mode: don't pretend it worked — degrade to a human handoff.
             content = "I've got your details, but I'm having trouble reaching the booking system right now — I'll have someone confirm with you shortly."
+            state.clear()
         await websocket.send_text(
             json.dumps(
                 {
@@ -686,6 +769,7 @@ async def _run_call(websocket: WebSocket, call_id: str) -> None:
     logger.info(f"Voice call connected: {call_id}")
 
     llm = LLMClient()
+    booking_state: dict = {}  # what this call has established so far
 
     try:
         await websocket.send_text(
@@ -730,7 +814,7 @@ async def _run_call(websocket: WebSocket, call_id: str) -> None:
                 elif interaction_type == "update_only":
                     continue
                 elif interaction_type in ("response_required", "reminder_required"):
-                    await _handle_turn(websocket, llm, event, call_id)
+                    await _handle_turn(websocket, llm, event, call_id, booking_state)
                 else:
                     logger.debug(
                         f"Voice call {call_id}: unhandled interaction_type={interaction_type}"
