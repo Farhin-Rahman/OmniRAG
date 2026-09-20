@@ -82,7 +82,8 @@ async def create_web_call():
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                "https://api.retellai.com/v3/create-web-call",
+                # v2, not v3: RetellWebClient 2.x can't join v3 "gateway" calls (error_retell); v2 sunsets 2026-09-30.
+                "https://api.retellai.com/v2/create-web-call",
                 headers={
                     "Authorization": f"Bearer {settings.retell_api_key}",
                     "Content-Type": "application/json",
