@@ -385,14 +385,19 @@ async def _retrieve_context(question: str, k: int = 5) -> list[str]:
         if settings.voice_kb_doc_name
         else None
     )
-    results = get_qdrant_service().search(
-        query_vector=query_vector,
-        tenant_id="default",
-        k=k,
-        embedding_id=settings.embedding_model,
-        filters={},
-        acl_filter=scope,
-    )
+    try:
+        results = get_qdrant_service().search(
+            query_vector=query_vector,
+            tenant_id="default",
+            k=k,
+            embedding_id=settings.embedding_model,
+            filters={},
+            acl_filter=scope,
+        )
+    except Exception as e:
+        # Answer "I don't have that information" rather than fail the whole turn.
+        logger.error(f"Voice RAG search failed: {e}")
+        return []
     return [
         r.get("text") or r.get("content")
         for r in results

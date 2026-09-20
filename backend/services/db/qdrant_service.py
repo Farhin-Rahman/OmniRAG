@@ -482,6 +482,9 @@ class QdrantService:
                 "source_uri",
                 "mime",
                 "status",
+                # Qdrant Cloud rejects filtering on an unindexed field; the
+                # voice agent scopes its search to one document by name.
+                "doc_name",
             ]
 
             for field in index_fields:
