@@ -4,8 +4,8 @@ Multilingual translation for campaign moderation.
 LLM-based (reuses ai.llm_client.LLMClient / GroqClient), not a dedicated
 translation model — no new dependency, no per-language model downloads,
 just the same fast, already-proven inference path the rest of this
-project uses. LaunchGood serves 130+ countries; campaigns can arrive in
-any language, and both the rule engine (English keyword matching) and the
+project uses. A global crowdfunding platform serves many countries; campaigns
+can arrive in any language, and both the rule engine (English keyword matching) and the
 risk-assessment LLM call work best on English text, so everything gets
 translated to English before those run.
 """

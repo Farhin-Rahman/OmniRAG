@@ -1,10 +1,10 @@
 # Campaign Risk Assessment Guidelines
 
-Note: LaunchGood does not publish granular internal review criteria. This document is authored for this project to operationalize their published policy (see launchgood_trust_safety.md) into concrete reviewer guidance, drawing on standard crowdfunding fraud-prevention practice.
+Note: This document is authored for this project to operationalize the reference policy (see platform_trust_safety.md) into concrete reviewer guidance, drawing on standard crowdfunding fraud-prevention practice.
 
 ## Verifiability standard (documentation review)
 
-A campaign should be APPROVED only when it is both clearly legitimate and verifiable: a specific purpose, a named person, organization, or institution, and either an itemized use of funds or a concrete deliverable. This operationalizes LaunchGood's "clear path of funds distribution to the final beneficiary" requirement — a sympathetic story with no way to verify it does not meet that bar.
+A campaign should be APPROVED only when it is both clearly legitimate and verifiable: a specific purpose, a named person, organization, or institution, and either an itemized use of funds or a concrete deliverable. This operationalizes the policy's requirement of a traceable path of funds to the final beneficiary — a sympathetic story with no way to verify it does not meet that bar.
 
 ## Financial-scheme red flags
 
@@ -12,11 +12,11 @@ Any language promising guaranteed or fixed returns, profit-sharing from pooled f
 
 ## Off-platform payment requests
 
-Requests to wire funds directly, pay via gift cards, or transfer outside LaunchGood's own payment flow bypass the platform's fraud monitoring and donor protection entirely. This is a hard rejection signal on its own.
+Requests to wire funds directly, pay via gift cards, or transfer outside the platform's own payment flow bypass the platform's fraud monitoring and donor protection entirely. This is a hard rejection signal on its own.
 
 ## Amount proportionality
 
-The target amount should be checked against the stated purpose. A target far exceeding what the stated cause plausibly requires is a red flag consistent with the "enhanced due diligence" LaunchGood applies to higher-risk campaigns, even when the campaign appears otherwise legitimate.
+The target amount should be checked against the stated purpose. A target far exceeding what the stated cause plausibly requires is a red flag consistent with the enhanced due diligence the platform applies to higher-risk campaigns, even when the campaign appears otherwise legitimate.
 
 ## Escalate rather than guess
 
@@ -24,4 +24,4 @@ When a campaign is plausible but unverifiable — no named institution, no itemi
 
 ## International and higher-risk campaigns
 
-Campaigns raising funds for beneficiaries outside G7 countries warrant closer scrutiny per LaunchGood's enhanced due diligence policy, but scrutiny is not the same as suspicion — the large majority of LaunchGood's campaigns serve exactly this population (Gaza, Sudan, Yemen, and similar regions) and are legitimate. The purpose of this guideline is caution, not a bias against a campaign's geography.
+Campaigns raising funds for beneficiaries outside G7 countries warrant closer scrutiny per the platform's enhanced due diligence policy, but scrutiny is not the same as suspicion — many legitimate campaigns on crowdfunding platforms serve exactly this population (Gaza, Sudan, Yemen, and similar regions). The purpose of this guideline is caution, not a bias against a campaign's geography.

@@ -10,9 +10,9 @@ Two `source`s:
     production data; a real deployment would evaluate against a historical
     set of campaigns with recorded human decisions. That's the honest
     limitation of a from-scratch project.
-  - "launchgood-live" — real campaigns copied from launchgood.com (title,
-    description, goal), all of which passed LaunchGood's own vetting, so
-    the expected action is APPROVE. These check the pipeline against real
+  - "public-live" — real public crowdfunding campaigns (title,
+    description, goal), all of which had already passed their host
+    platform's own vetting, so the expected action is APPROVE. These check the pipeline against real
     prose and real fundraising patterns, and one (the anime venture) is a
     deliberate near-boundary case.
 
@@ -303,11 +303,11 @@ GOLDEN_SET: list[GoldenCase] = [
             "it post-translation rather than the rule layer."
         ),
     ),
-    # --- Real campaigns from launchgood.com (Sept 2026). All passed the
-    #     platform's own vetting, so expected_action is APPROVE. Copied
-    #     title / description / goal; descriptions condensed. ---------------
+    # --- Real public crowdfunding campaigns (Sept 2026). All had passed
+    #     their host platform's own vetting, so expected_action is APPROVE.
+    #     Title / description / goal; descriptions condensed. ---------------
     GoldenCase(
-        id="lg-ihr-gaza-orphans",
+        id="live-ihr-gaza-orphans",
         title="Sponsor Gaza Orphans",
         description=(
             "International Humanitarian Relief (IHR), a registered 501(c)(3) "
@@ -328,10 +328,10 @@ GOLDEN_SET: list[GoldenCase] = [
             "incomplete inference (the goal is cumulative over 2+ years) but "
             "flagging it for a human rather than rejecting is the safe failure."
         ),
-        source="launchgood-live",
+        source="public-live",
     ),
     GoldenCase(
-        id="lg-noor-orphan-girls",
+        id="live-noor-orphan-girls",
         title="Help 150 Orphan Girls Keep Their Childhood",
         description=(
             "Losing her family shouldn't mean losing her childhood. This "
@@ -349,10 +349,10 @@ GOLDEN_SET: list[GoldenCase] = [
             "eval's own risk assessment caught this discrepancy; the label was "
             "originally APPROVE and was corrected.)"
         ),
-        source="launchgood-live",
+        source="public-live",
     ),
     GoldenCase(
-        id="lg-sapa-sudan-newborns",
+        id="live-sapa-sudan-newborns",
         title="Urgent: Save Newborn Lives in Sudan",
         description=(
             "In Sudan, mothers give birth in tents and overcrowded camps "
@@ -369,10 +369,10 @@ GOLDEN_SET: list[GoldenCase] = [
         expected_action="APPROVE",
         expect_hard_block=False,
         note="Detailed, itemised, independently rated charity.",
-        source="launchgood-live",
+        source="public-live",
     ),
     GoldenCase(
-        id="lg-iltizam-wells",
+        id="live-iltizam-wells",
         title="The Prophet Said: Water Is The Best Charity. Help Us Build 150 Wells!",
         description=(
             "Iltizam Relief Society, active for 10 years, is raising funds to "
@@ -388,10 +388,10 @@ GOLDEN_SET: list[GoldenCase] = [
         expected_action="APPROVE",
         expect_hard_block=False,
         note="Long detailed case, named partners, 10-year track record.",
-        source="launchgood-live",
+        source="public-live",
     ),
     GoldenCase(
-        id="lg-arzi-muslim-anime",
+        id="live-arzi-muslim-anime",
         title="Help Us Make History: The World's First Muslim Anime Movie",
         description=(
             "An individual fundraiser by Zaurbek Tsoroev to produce 'Arzi's "
@@ -416,6 +416,6 @@ GOLDEN_SET: list[GoldenCase] = [
             "ESCALATE here — flag the amount / creator / deliverables for a "
             "human — is a correct call, not a failure."
         ),
-        source="launchgood-live",
+        source="public-live",
     ),
 ]

@@ -41,7 +41,7 @@ Actions:
 
 Score 0.0-0.3 for clearly-legitimate-and-verifiable, 0.3-0.7 for plausible-but-unverifiable or amount-mismatch (these get a second look), 0.7-1.0 for clear fraud signals.
 
-Relevant LaunchGood policy, retrieved for this specific campaign — cite it by name in your rationale when it applies:
+Relevant platform policy, retrieved for this specific campaign — cite it by name in your rationale when it applies:
 {policy_context}
 
 Campaign title: {title}
@@ -59,7 +59,7 @@ JUDGE_PROMPT = """You are a senior trust & safety reviewer. Three independent re
 
 Schema: {{"risk_score": <0.0-1.0>, "risk_category": "<short label>", "recommended_action": "APPROVE"|"REJECT"|"ESCALATE", "rationale": "<one or two sentences, referencing the disagreement if relevant>"}}
 
-Relevant LaunchGood policy, retrieved for this specific campaign:
+Relevant platform policy, retrieved for this specific campaign:
 {policy_context}
 
 Campaign title: {title}

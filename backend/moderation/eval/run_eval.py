@@ -198,11 +198,11 @@ def _print_report(results: list[dict], verbose: bool) -> dict:
         for r in failed:
             print(f"      - {r['id']}")
 
-    real = [r for r in scored if r.get("source") == "launchgood-live"]
+    real = [r for r in scored if r.get("source") == "public-live"]
     if real:
         approved = sum(1 for r in real if r["predicted"] == "APPROVE")
         print(
-            f"\n  Real LaunchGood campaigns: {approved}/{len(real)} approved "
+            f"\n  Real public campaigns: {approved}/{len(real)} approved "
             f"(all passed the platform's own vetting, so APPROVE is expected)"
         )
         for r in real:
