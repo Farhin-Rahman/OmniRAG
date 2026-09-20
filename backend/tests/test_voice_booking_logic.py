@@ -12,6 +12,7 @@ import json
 
 import routes.voice as voice_module
 from routes.voice import (
+    _closing_kind,
     _has_street_number,
     _merge_booking_fields,
     _missing_booking_fields,
@@ -244,3 +245,127 @@ class TestBookingConversation:
         replies, booked = _run_call(monkeypatch, turns, extractions)
         assert not booked
         assert "street number" in replies[1]
+
+
+class TestClosing:
+    """After "No, that's it. Thank you." the agent said something about grape
+    disease papers (a knowledge-base lookup on a goodbye). A goodbye must get a
+    goodbye and a hang-up, and nothing else may ever be mistaken for one."""
+
+    def test_clear_goodbyes_end_the_call_immediately(self):
+        for text in [
+            "No. That's it.",
+            "No, that's all, thank you!",
+            "Thanks, bye",
+            "That'll be all.",
+            "Nope, I'm good.",
+            "Nothing else, thanks",
+            "Goodbye",
+            "I'm all set",
+            "We're all set.",
+            "That's all for now",
+            "That's about it",
+            "That will be it",
+            "Nothing more",
+            "No, that's all I need",
+            "No more questions",
+            "I think that's all",
+            "You've been very helpful, that's all",
+            "Okay, thanks a lot, bye",
+        ]:
+            assert _closing_kind(text) == "end", text
+
+    def test_a_bare_thanks_or_okay_asks_before_hanging_up(self):
+        for text in ["Thank you.", "Thanks!", "Okay.", "Alright, great", "Sounds good"]:
+            assert _closing_kind(text) == "soft", text
+
+    def test_the_same_words_end_the_call_once_we_asked_anything_else(self):
+        asked = "Of course. Is there anything else I can help you with?"
+        for text in ["Thank you.", "Okay.", "No.", "No thanks", "Nope"]:
+            assert _closing_kind(text, asked) == "end", text
+
+    def test_a_bare_no_means_nothing_unless_we_just_asked(self):
+        assert (
+            _closing_kind("No.", "You're all set for repair. Anything else?") == "end"
+        )
+        assert _closing_kind("No.", "Could you tell me your name?") is None
+        assert _closing_kind("No.") is None
+
+    def test_anything_with_real_content_is_never_a_goodbye(self):
+        # One unrecognised word means "not a goodbye": hanging up on someone
+        # who wasn't finished is far worse than missing a goodbye.
+        for text in [
+            "Thanks, also do you fix boilers?",
+            "Thank you. Is a technician available tomorrow?",
+            "No, the phone number is seven eight zero",
+            "That's not right",
+            "That's all for the furnace, but I have another question",
+            "That's it, I need to book another repair",
+            "I need to book a furnace repair.",
+            "What areas do you service?",
+        ]:
+            assert _closing_kind(text) is None, text
+            assert _closing_kind(text, "Anything else?") is None, text
+
+    def test_the_agent_says_goodbye_and_hangs_up_after_a_booking(self, monkeypatch):
+        socket = _FakeSocket()
+        state: dict = {}
+        transcript = [
+            {"role": "agent", "content": "You're all set for repair. Anything else?"},
+            {"role": "user", "content": "No. That's it."},
+        ]
+        event = {"response_id": 9, "transcript": transcript}
+        asyncio.run(voice_module._handle_turn(socket, None, event, "call-1", state))
+
+        assert len(socket.sent) == 1
+        message = socket.sent[0]
+        assert message["end_call"] is True
+        assert message["content_complete"] is True
+        assert "Goodbye" in message["content"]
+
+    def test_a_bare_thanks_gets_anything_else_then_hangs_up_on_no(self):
+        socket = _FakeSocket()
+        transcript = [
+            {"role": "agent", "content": "Apex serves Calgary and Edmonton."},
+            {"role": "user", "content": "Thank you."},
+        ]
+        asyncio.run(
+            voice_module._handle_turn(
+                socket, None, {"response_id": 1, "transcript": transcript}, "c", {}
+            )
+        )
+        assert len(socket.sent) == 1
+        assert "anything else" in socket.sent[0]["content"].lower()
+        assert not socket.sent[0].get("end_call")
+
+        # The caller says no; the transcript now holds our "anything else?".
+        transcript += [
+            {"role": "agent", "content": socket.sent[0]["content"]},
+            {"role": "user", "content": "No."},
+        ]
+        asyncio.run(
+            voice_module._handle_turn(
+                socket, None, {"response_id": 2, "transcript": transcript}, "c", {}
+            )
+        )
+        assert socket.sent[-1]["end_call"] is True
+
+    def test_it_never_hangs_up_in_the_middle_of_a_booking(self, monkeypatch):
+        async def fake_classify(llm, conversation, message):
+            return _intent(
+                service="repair", address=None, phone=None, customer_name=None
+            )
+
+        monkeypatch.setattr(voice_module, "_classify_intent", fake_classify)
+        socket = _FakeSocket()
+        state = {"in_booking": True}
+        transcript = [
+            {
+                "role": "agent",
+                "content": "Could you tell me the address for the visit?",
+            },
+            {"role": "user", "content": "No, that's it."},
+        ]
+        event = {"response_id": 3, "transcript": transcript}
+        asyncio.run(voice_module._handle_turn(socket, None, event, "call-1", state))
+        assert not any(m.get("end_call") for m in socket.sent)

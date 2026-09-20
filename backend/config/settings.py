@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # writing; the outbound route checks for it and fails cleanly if absent
     # rather than assuming it exists.
     retell_from_number: str = os.getenv("RETELL_FROM_NUMBER", "")
+    # Restrict the voice agent's answers to one document by name. The vector
+    # index is shared by every demo and can hold stale documents; unset =
+    # search everything (the default), so this changes nothing until set.
+    voice_kb_doc_name: str = os.getenv("VOICE_KB_DOC_NAME", "")
 
     # Firebase Auth — service account JSON lives at backend/gcp-service-account.json
     # (gitignored, never committed). Override the path via env if needed.

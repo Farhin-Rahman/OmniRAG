@@ -264,6 +264,69 @@ def _looks_like_booking_request(message: str) -> bool:
     return any(kw in lowered for kw in _BOOKING_KEYWORDS)
 
 
+_CLOSING_WORDS = set(
+    "no nope nah ok okay alright great perfect awesome cool nice sounds good got "
+    "thats that it its all is will be thatll should covers thank thanks cheers "
+    "you so very much a lot bye goodbye nothing else more anymore questions "
+    "everything im i am we are were think about now for need needed just only "
+    "done finished set fine have day one evening take care see later talk to "
+    "well sir maam appreciate appreciated help helping helpful youve been "
+    "really calling your the".split()
+)
+# An unmistakable "I'm finished" — safe to hang up on immediately.
+_CLOSING_STRONG = re.compile(
+    r"\b(thats (it|all|everything|about it)|that is (it|all|everything)|"
+    r"that will be (it|all)|thatll be (it|all)|that should be (it|all)|"
+    r"that covers (it|everything)|nothing (else|more)|no more( questions)?|"
+    r"all set|all good|all done|(im|i am|we are|were) "
+    r"(good|done|finished|all set|set|fine)|bye|goodbye|take care|"
+    r"have a (good|great|nice)|see you|talk to you later)\b"
+)
+_CLOSING_THANKS = re.compile(r"\b(thanks?|thank you|cheers|appreciate|appreciated)\b")
+_CLOSING_ACK = re.compile(
+    r"(?:(?:ok|okay|alright|great|perfect|awesome|cool|nice|good|sounds good|got it)\s*)+"
+)
+
+
+def _closing_kind(message: str, previous_agent: str = "") -> str | None:
+    """How to treat a caller who may be wrapping up:
+
+    "end"  — clearly done ("that's it", "I'm all set", "bye"): say goodbye and
+             hang up. Also a bare thanks/"no"/"okay" once we've already asked
+             whether there's anything else.
+    "soft" — a thanks or "okay" that might just be acknowledging an answer:
+             ask "anything else?" instead of hanging up.
+    None   — anything else, including "thanks, also do you fix boilers?".
+
+    The match is on the *whole* utterance being closing words, deliberately:
+    hanging up on someone who wasn't finished is far worse than missing a
+    goodbye, so one unrecognised word means "not a goodbye".
+    """
+    text = re.sub(r"[^a-z\s]", "", message.lower().replace("'", "").replace("’", ""))
+    tokens = text.split()
+    if not tokens or len(tokens) > 12:
+        return None
+    if not all(t in _CLOSING_WORDS for t in tokens):
+        return None
+    joined = " ".join(tokens)
+    asked_more = "anything else" in previous_agent.lower()
+
+    if _CLOSING_STRONG.search(joined):
+        return "end"
+    if all(t in {"no", "nope", "nah"} for t in tokens):
+        return "end" if asked_more else None
+    if _CLOSING_THANKS.search(joined) or _CLOSING_ACK.fullmatch(joined):
+        return "end" if asked_more else "soft"
+    return None
+
+
+def _last_agent_message(transcript: list) -> str:
+    for turn in reversed(transcript or []):
+        if turn.get("role") == "agent" and (turn.get("content") or "").strip():
+            return turn["content"]
+    return ""
+
+
 def _extract_conversation(transcript: list) -> tuple[str, str]:
     """Return (full transcript as text, latest caller utterance)."""
     lines = []
@@ -317,13 +380,18 @@ async def _retrieve_context(question: str, k: int = 5) -> list[str]:
         logger.error(f"Voice RAG embedding failed: {e}")
         return []
 
+    scope = (
+        {"must": [{"key": "doc_name", "match": {"value": settings.voice_kb_doc_name}}]}
+        if settings.voice_kb_doc_name
+        else None
+    )
     results = get_qdrant_service().search(
         query_vector=query_vector,
         tenant_id="default",
         k=k,
         embedding_id=settings.embedding_model,
         filters={},
-        acl_filter=None,
+        acl_filter=scope,
     )
     return [
         r.get("text") or r.get("content")
@@ -530,6 +598,41 @@ async def _handle_turn(
                     "response_type": "response",
                     "response_id": response_id,
                     "content": "Sorry, could you repeat that?",
+                    "content_complete": True,
+                }
+            )
+        )
+        return
+
+    # A caller who's wrapping up gets a goodbye or an "anything else?" — never
+    # a knowledge-base lookup (which has nothing to match and answers with
+    # whatever unrelated text scores highest). Not while a booking is
+    # mid-way: "no" there is an answer, not a goodbye.
+    closing = (
+        None
+        if state.get("in_booking")
+        else _closing_kind(latest_message, _last_agent_message(transcript))
+    )
+    if closing == "end":
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "response_type": "response",
+                    "response_id": response_id,
+                    "content": "Thanks for calling Apex HVAC & Plumbing — have a great day. Goodbye!",
+                    "content_complete": True,
+                    "end_call": True,
+                }
+            )
+        )
+        return
+    if closing == "soft":
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "response_type": "response",
+                    "response_id": response_id,
+                    "content": "Of course. Is there anything else I can help you with?",
                     "content_complete": True,
                 }
             )
