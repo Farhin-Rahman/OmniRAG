@@ -1,4 +1,5 @@
 {
+  "id": "omnirag-campaign-moderation",
   "name": "OmniRAG Trust & Safety — Campaign Intake",
   "nodes": [
     {
@@ -40,7 +41,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://backend:8080/api/webhooks/campaign-review",
+        "url": "={{ $env.OMNIRAG_BACKEND_URL }}/api/webhooks/campaign-review",
         "sendHeaders": false,
         "sendBody": true,
         "specifyBody": "json",
@@ -66,7 +67,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "PASTE_YOUR_SLACK_WEBHOOK_URL_HERE",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
@@ -107,6 +108,7 @@
       "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
     }
   },
+  "active": true,
   "settings": { "executionOrder": "v1" },
   "pinData": {}
 }
