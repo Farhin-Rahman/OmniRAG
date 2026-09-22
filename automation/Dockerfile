@@ -13,7 +13,11 @@
 # (OMNIRAG_BACKEND_URL) are never baked into the image or the workflow
 # files — the workflows read them via {{ $env.VAR }} expressions at
 # execution time, set as real environment variables on the host.
-FROM docker.n8n.io/n8nio/n8n:latest
+#
+# Docker Hub, not docker.n8n.io (n8n's own registry, used by the local
+# docker-compose setup) — Render's build servers hit a 429 rate limit
+# pulling from docker.n8n.io. Same image, different registry.
+FROM n8nio/n8n:latest
 
 USER root
 COPY entrypoint.sh /entrypoint.sh
