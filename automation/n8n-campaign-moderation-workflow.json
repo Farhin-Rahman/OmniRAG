@@ -42,7 +42,12 @@
       "parameters": {
         "method": "POST",
         "url": "={{ $env.OMNIRAG_BACKEND_URL }}/api/webhooks/campaign-review",
-        "sendHeaders": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Webhook-Secret", "value": "={{ $env.OMNIRAG_WEBHOOK_SECRET }}" }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
