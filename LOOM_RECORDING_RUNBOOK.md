@@ -1,204 +1,252 @@
-# OmniRAG Loom Recording Runbook 🎬
+# OmniRAG — Recruiter & Reviewer Walkthrough Guide 🎬
 
-> **Quick Note on Render:** You **do NOT need to redeploy Render**. Everything is running locally in your Docker containers (`localhost:5174`, `localhost:8081`, `localhost:5678`). Local execution has zero cold starts, zero latency, and 100% reliability for recording.
+> **Quick Summary:** OmniRAG is an enterprise AI operations platform that automates customer workflows while keeping humans in full control of critical decisions. It combines **smart document search (RAG)**, **automated background workflows (n8n)**, **fraud & policy moderation (Trust & Safety)**, and **an AI voice agent for appointment bookings**.
 
 ---
 
-## ⚡ Pre-Flight Setup (Open These Tabs Before Pressing Record)
+## ⚡ Quick Setup (Open These 4 Tabs Before Recording)
 
-Have these browser tabs open side-by-side in Chrome:
-1. **Tab 1 — Chat:** `http://localhost:5174/chat` (signed in as `sadiafarhin62@gmail.com`)
+Open these tabs in your browser side-by-side:
+1. **Tab 1 — Chat & Documents:** `http://localhost:5174/chat` (Signed in as `sadiafarhin62@gmail.com`)
 2. **Tab 2 — Automations:** `http://localhost:5174/automation`
-3. **Tab 3 — n8n Canvas:** `http://localhost:5678` (Open the "OmniRAG Trust & Safety — Campaign Intake" workflow)
-4. **Tab 4 — Trust & Safety:** `http://localhost:5174/moderation` (Should show **Pending review (3)**)
+3. **Tab 3 — Automated Workflows (n8n):** `http://localhost:5678` (Open the "OmniRAG Trust & Safety — Campaign Intake" workflow)
+4. **Tab 4 — Trust & Safety:** `http://localhost:5174/moderation` (Contains 3 pre-loaded campaigns to review)
 5. **Tab 5 — Voice Agent:** `http://localhost:5174/voice`
 
+*(Note: Everything is running locally in Docker. You do **not** need to redeploy anything on Render).*
+
 ---
 
-## 🔑 Terminal Cheat Sheet: Controlling RBAC Access
+## 💻 Quick Terminal Commands (Keep Handy)
 
-You control user roles directly via terminal commands using the backend admin scripts:
-
+If you want to demonstrate how access permissions work, or reset the test cards:
 ```powershell
-# 1. Grant Admin access (sets Firebase custom claim: roles=["TrustAndSafetyAdmin"])
+# 1. Grant Admin Access (Shows green Admin tag & Trust & Safety button)
 docker exec omnirag-backend-python python set_admin.py sadiafarhin62@gmail.com
 
-# 2. Revoke Admin access (clears role to normal user: roles=[])
+# 2. Revoke Admin Access (Turns account back into a normal standard user)
 docker exec omnirag-backend-python python revoke_admin.py sadiafarhin62@gmail.com
 
-# 3. Emergency Queue Reset (re-seeds the 3 moderation campaigns if needed)
+# 3. Reset Review Queue (Restores the 3 sample campaigns anytime for a fresh take)
 python scripts/seed_moderation_queue.py
 ```
 
-*(Note: Custom claims take effect on the user's next token refresh or when signing out/in).*
+---
+
+## ⏱️ Video Plan (~6–7 Minutes Total)
+
+| Section | Time | What You Are Showing |
+| :--- | :--- | :--- |
+| **1. Intro** | 0:00 – 0:45 | High-level problem: scaling AI operations safely with human oversight. |
+| **2. Document Chat** | 0:45 – 1:45 | Asking questions against company PDFs with real, clickable source citations. |
+| **3. Automations** | 1:45 – 3:15 | Background pipelines (`/automation`) & automated intake workflow in n8n. |
+| **4. Trust & Safety** | 3:15 – 5:30 | Role permissions (Admin vs Regular) + Reviewing the 3 campaigns (Approve, Escalate, Reject). |
+| **5. Voice Agent** | 5:30 – 6:30 | An AI phone agent that answers calls and books appointments directly to the system. |
+| **6. Wrap-Up** | 6:30 – 7:00 | Summary of business value: speed of automation + safety of human review. |
 
 ---
 
-## ⏱️ RECORDING TIMELINE (Target: ~7–8 Minutes)
+## STEP 1: Introduction (0:00 – 0:45)
 
-```
-[0:00 - 1:00]  Introduction & Executive Overview
-[1:00 - 2:00]  Chat & Document Library (RAG with Citations)
-[2:00 - 4:00]  The Automation Layer (Frontend Pipeline + n8n Webhook Workflow)
-[4:00 - 6:30]  Trust & Safety: RBAC + 3-Layer Moderation Queue Review
-[6:30 - 7:30]  Voice Agent & Live Booking Intake
-[7:30 - 8:00]  Closing Summary
-```
+📍 **Where to be:** Tab 1 (`http://localhost:5174/chat`)
 
----
-
-## STEP 1: Introduction (0:00 – 1:00)
-
-📍 **SCREEN:** Tab 1 (`http://localhost:5174/chat`)
-
-🗣️ **SAY ALOUD:**
-> "Hi everyone. Today I'm presenting OmniRAG — an enterprise-grade AI operations platform built for automated intake, knowledge retrieval, and human-in-the-loop Trust & Safety governance.
->
-> In production systems, you can't just give an autonomous LLM unconstrained decision power over critical operations like financial campaign approval or customer bookings. 
+🗣️ **What to say aloud:**
+> "Hi everyone! Today I'm excited to walk you through OmniRAG. 
 > 
-> OmniRAG demonstrates how to build a deliberate architectural seam: using workflow automations like n8n for intake and notifications, real backend code for deterministic policy rules and AI consensus scoring, and strict Role-Based Access Control so humans always retain final authority."
+> OmniRAG is an enterprise AI operations platform. When companies adopt AI, they face two big challenges: first, generic AI often hallucinates or gives inaccurate answers; and second, you can't trust an autonomous AI to make high-stakes decisions on its own — like approving financial payouts or booking customer jobs.
+> 
+> OmniRAG solves this by combining four core pillars:
+> 1. Grounded document search with citations.
+> 2. Automated background workflows to connect systems.
+> 3. Trust & Safety moderation where AI assists, but a human manager always has the final say.
+> 4. An AI voice agent that takes real customer calls and bookings.
+> 
+> Let's take a look at how it works."
 
 ---
 
-## STEP 2: Document Library & RAG Chat (1:00 – 2:00)
+## STEP 2: Smart Document Chat & Citations (0:45 – 1:45)
 
-📍 **SCREEN:** Tab 1 (`http://localhost:5174/chat`)
+📍 **Where to be:** Tab 1 (`http://localhost:5174/chat`)
 
-👉 **ACTION:** Click **"Document Library"** in the sidebar. Show the ingested document (e.g. `apex_hvac_faq.pdf`). Then click back to **Chat** and ask a question:
-- Type: `What maintenance does an HVAC system require?`
-- Press Enter.
+🖱️ **What to do:**
+1. Click **"Document Library"** in the sidebar. Show that files (like `apex_hvac_faq.pdf`) are stored in the knowledge base.
+2. Click back to **"Chat"**.
+3. In the message box at the bottom, type:
+   `What maintenance does an HVAC system need?`
+4. Press Enter.
 
-🗣️ **SAY ALOUD:**
-> "Here in our chat workspace, questions are grounded against our vector store in Qdrant. Documents are chunked and embedded using local embedding models, and every answer returns with source citations rather than hallucinations."
+👀 **What you see:**
+- The AI answers clearly in seconds.
+- Below the answer, point to the source citation showing the exact document and section used.
 
----
+💡 **How it works (in plain terms):**
+- Instead of guessing from general internet training, the system searches the uploaded company document, finds the exact relevant paragraph, and bases its answer strictly on those facts.
 
-## STEP 3: The Automation Layer (2:00 – 4:00) ⚡ *HIGH PRIORITY*
-
-📍 **SCREEN:** Switch to Tab 2 (`http://localhost:5174/automation`)
-
-👉 **ACTION 1:** Scroll through the **Document Ingestion Pipeline** visual diagram at the top.
-- Point to the 5 stages: Upload ➔ Parse ➔ Chunk ➔ Embed ➔ Index.
-- Point to the **Live Stats** cards below it: Total documents, Indexed & ready.
-
-🗣️ **SAY ALOUD:**
-> "Under the Automations tab, we expose the operational plumbing of the platform. Here is our live ingestion pipeline showing real-time document processing stages and status badges.
->
-> Down here, we expose standardized webhook endpoints like `/api/webhooks/ingest-url` and `/api/webhooks/query`, secured with webhook secrets, allowing platforms like n8n, Make, or Zapier to trigger background ingestion or query our knowledge base over HTTP."
-
-👉 **ACTION 2:** Scroll down to **"Live Webhook Test"** at the bottom of the page.
-- In the **Question** box, type: `What is the warranty policy?`
-- Click the blue **"Send"** button.
-- Show the formatted JSON response appearing instantly in green in the **Response JSON** box below.
-
-🗣️ **SAY ALOUD:**
-> "We can even test this live right here: firing a webhook query returns a clean JSON payload containing the grounded answer and citations, ready to be consumed by any external downstream workflow."
-
-👉 **ACTION 3:** Switch to Tab 3 (`http://localhost:5678` — n8n Canvas)
-- Show the node graph: **Campaign Submitted (Webhook)** ➔ **Normalize Campaign (Code)** ➔ **Auto-Review (HTTP Request)** ➔ **Notify #trust-safety (Slack)**.
-
-🗣️ **SAY ALOUD:**
-> "Now let's look at n8n, running in our Docker stack. This workflow handles campaign intake. When a creator submits a campaign, n8n normalizes the payload, calls our backend AI moderation webhook, and posts the resulting recommendation directly to our Slack `#trust-safety` channel.
->
-> The key design principle here is the seam: n8n owns the intake glue and notification formatting. But notice what this workflow does NOT have — it is never given approval or payout authority. High-stakes governance decisions are strictly human-in-the-loop."
+🗣️ **What to say aloud:**
+> "Here in our chat workspace, questions are strictly grounded in our company documents. Instead of making up answers, the AI retrieves the exact paragraphs from our uploaded manuals or policies, and provides clickable citations back to the source. This gives teams full confidence in accuracy."
 
 ---
 
-## STEP 4: Trust & Safety & RBAC (4:00 – 6:30) ⚡ *CORE FEATURE*
+## STEP 3: Automated Workflows & Webhooks (1:45 – 3:15)
 
-📍 **SCREEN:** Switch to Tab 1 (`http://localhost:5174/chat`)
+📍 **Where to be:** Switch to Tab 2 (`http://localhost:5174/automation`)
 
-👉 **ACTION 1: Showcase RBAC in the Sidebar**
-- Point mouse to the bottom-left sidebar under your email (`sadiafarhin62@gmail.com`).
-- Point to the green **"Admin"** badge.
-- Point to the green **"Trust & Safety"** shield button.
+🖱️ **What to do (Part A — Live Dashboard):**
+1. Scroll across the top diagram: point out the 5 visual steps: **Upload ➔ Parse ➔ Chunk ➔ Embed ➔ Index**.
+2. Point out the **Live Stats** counters: Total documents, Indexed & ready.
+3. Scroll down to the **"Live Webhook Test"** box at the bottom:
+   - In the Question box, type: `What is the warranty policy?`
+   - Click the blue **"Send"** button.
+   - Show the clean green JSON answer that appears instantly below.
 
-🗣️ **SAY ALOUD:**
-> "Notice down here in the sidebar — my profile has an 'Admin' badge and a green 'Trust & Safety' navigation button.
->
-> This is protected by full Role-Based Access Control (RBAC). Roles are managed directly from the terminal using our backend admin scripts — `set_admin.py` and `revoke_admin.py` — which inject or clear custom claims in Firebase Auth.
->
-> In our React AuthProvider, we verify this `TrustAndSafetyAdmin` claim on the JWT. If a normal user logs in, this button is completely hidden. If an unauthorized user tries typing `/moderation` directly in the URL bar, our `<AdminRoute>` guard intercepts and redirects them back to `/chat`. And on the backend, every single review and decision endpoint enforces role requirements, returning a strict `403 Forbidden` if the claim is missing."
+🗣️ **What to say aloud:**
+> "Under our Automations dashboard, we provide transparency into how data moves through the platform. This visual pipeline shows documents being processed and indexed in real-time.
+> 
+> We also provide secure webhook connections. For example, testing a query here instantly returns structured data that any external company system can use."
 
-👉 **ACTION 2: Enter the Moderation Queue**
-- Click the green **"Trust & Safety"** button (or switch to Tab 4: `http://localhost:5174/moderation`).
-- Point to the left pane showing **"Pending review (3)"**.
+📍 **Where to be:** Switch to Tab 3 (`http://localhost:5678` — n8n Workflow)
 
-🗣️ **SAY ALOUD:**
-> "This brings us to the Trust & Safety review queue. Here we have three campaigns pre-loaded from our intake webhook, representing the three distinct paths of our moderation engine."
+🖱️ **What to do (Part B — Visual Automation):**
+1. Show the visual node flow on the canvas:
+   **Submission Webhook** ➔ **Data Normalization** ➔ **AI Review** ➔ **Slack Notification**.
 
-👉 **ACTION 3: Case 1 — Clean Legitimate Campaign (APPROVE)**
-- Click on **"Riverside Community Garden Expansion"** ($3,500).
-- Point to: AI Recommends: **APPROVE**, Risk score: **0.10 (Low)**.
-- Read rationale aloud: *"Campaign provides a specific purpose, named organization (Riverside Youth Center), supplier (Nashville Seed Co.), and itemized, verified costs."*
-- Click the green **"Approve"** button.
-- Point to the green toast: *"Campaign approved. Recorded to the audit ledger."* Show it drop off the queue.
+💡 **How it works (in plain terms):**
+- When someone submits a new campaign or form, this automated workflow receives it, cleans the data, runs the AI review in the background, and posts a notification into Slack.
+- **Crucial Rule:** The automation sends alerts, but it is **never** allowed to automatically approve financial payouts. High-stakes approvals are strictly reserved for human reviewers.
 
-👉 **ACTION 4: Case 2 — Ambiguous / Consensus Trigger (ESCALATE)**
-- Click on **"Holistic Wellness & Recovery Equipment"** ($7,500).
-- Point to the badge: AI Recommends: **ESCALATE**, Risk score: **0.55 (Unverifiable)**.
-- Highlight the source: **`langgraph-auto-consensus`**!
+🗣️ **What to say aloud:**
+> "Here in n8n, we automate the heavy lifting. When a new submission arrives, this workflow automatically normalizes the data, sends it through our AI policy checks, and alerts our team in Slack. 
+> 
+> But notice the boundary: automation handles the intake and notifications, while human managers retain final approval authority. That brings us to our Trust and Safety system."
 
-🗣️ **SAY ALOUD:**
-> "Look at the source here: `langgraph-auto-consensus`. Because this campaign's initial risk score fell in the ambiguous 0.3 to 0.7 middle band, the system triggered our multi-agent consensus judge: three independent LLM reviewer voters and one judge. They agreed that while the wellness mission is plausible, it lacks itemized equipment quotes or verification documents, so escalation is required."
+---
 
-- Click the yellow **"Escalate"** button.
-- In Notes, type: `Requesting verified supplier invoice and facility credentials.`
-- Click Confirm. Show it recorded.
+## STEP 4: Trust & Safety with Role Security (3:15 – 5:30)
 
-👉 **ACTION 5: Case 3 — Policy Violation / Rule Block (REJECT)**
-- Click on **"Guaranteed return investment pool"** ($50,000).
-- Point to: AI Recommends: **REJECT**, Risk score: **1.0 (rule_violation)**.
-- Read rationale: *"Blocked by deterministic policy rule: Contains banned phrase: 'guaranteed return'; Contains banned phrase: 'double your money'"*
+📍 **Where to be:** Back to Tab 1 (`http://localhost:5174/chat`)
 
-🗣️ **SAY ALOUD:**
-> "And this third case shows our first line of defense: deterministic policy rules. The phrases 'guaranteed return' and 'double your money' fired an immediate hard block. Zero LLM tokens were wasted, and a Slack alert was fired immediately."
+### A. Showing Role-Based Access Control (RBAC)
 
-- Click the red **"Reject"** button.
-- Reason code: `financial_fraud_guaranteed_return`
+🖱️ **What to do:**
+1. Look at the bottom-left sidebar under your user email.
+2. Point your cursor to the green **"Admin"** badge and the green **"Trust & Safety"** shield button.
+
+💡 **How it works (in plain terms):**
+- Only authorized managers with the `TrustAndSafetyAdmin` role can see this button or access moderation tools.
+- If a regular user logs in, the button is completely hidden. If an unauthorized user tries typing the `/moderation` link directly in their browser, the system automatically kicks them back to the chat screen.
+- Backend permissions are also locked down, so unauthorized requests get rejected immediately.
+
+🗣️ **What to say aloud:**
+> "Before opening the moderation queue, notice down here by my profile: there's an 'Admin' badge and a green 'Trust & Safety' button.
+> 
+> Access is strictly controlled through Role-Based Access Control. Only accounts with the Trust & Safety manager role can see this button. If a regular team member logs in, this entire section is hidden, and if anyone tries navigating directly to the URL, our security guards bounce them back. Roles can easily be toggled right from our administrative terminal."
+
+---
+
+### B. Reviewing the Moderation Queue (3 Realistic Cases)
+
+📍 **Where to be:** Click the green **"Trust & Safety"** button (or go to Tab 4: `http://localhost:5174/moderation`)
+
+👀 **What you see:**
+- The left column shows **"Pending review (3)"** with three realistic campaigns waiting for review.
+
+---
+
+#### 🟢 Case 1: Legitimate Campaign (APPROVE)
+🖱️ **Click:** **"Riverside Community Garden Expansion"** ($3,500)
+- **AI Recommendation:** `APPROVE` (Risk Score: 0.10 — Low)
+- **AI Rationale:** Mentions verified organization (*Riverside Youth Center*), local supplier (*Nashville Seed Co.*), and itemized costs.
+- **Action:** Click the green **"Approve"** button.
+- **Result:** A green notification pops up: *"Campaign approved. Recorded to the audit ledger."* The item disappears from the pending list.
+
+🗣️ **What to say aloud:**
+> "Here is our first case: a community garden funding request. The AI analyzed the description, confirmed verified local partners and transparent costs, and gave it a very low risk score of 0.10, recommending approval. As the human manager, I confirm the details and click 'Approve'. It is permanently logged to our audit ledger."
+
+---
+
+#### 🟡 Case 2: Borderline Campaign — Multi-AI Consensus (ESCALATE)
+🖱️ **Click:** **"Holistic Wellness & Recovery Equipment"** ($7,500)
+- **AI Recommendation:** `ESCALATE` (Risk Score: 0.55 — Unverifiable)
+- **Notice the source badge:** Reads **`langgraph-auto-consensus`**!
+
+💡 **How it works (in plain terms):**
+- This campaign sounds plausible, but lacks verifiable receipts or hospital paperwork.
+- Because the risk was in the borderline zone, the system didn't rely on just one AI. It had **three independent AI reviewers vote on it**, and a judge synthesized the final recommendation to escalate for manual paperwork check.
+
+🖱️ **Action:** Click the yellow **"Escalate"** button.
+- In the notes box, type: `Requesting equipment invoices and official registration.`
 - Click Confirm.
 
-👉 **ACTION 6: Live Agreement Rate Eval Metric**
-- Point mouse to the top-right header: **"AI / human agreement X%"**.
-
-🗣️ **SAY ALOUD:**
-> "Finally, look at the agreement rate up here in the header. This is not a synthetic benchmark. It is calculated dynamically from our append-only SQLite audit ledger joined with our AI recommendation log. In SQLite, UPDATE and DELETE are blocked by database triggers, giving us an immutable, tamper-proof record of every human decision."
+🗣️ **What to say aloud:**
+> "Our second case is a borderline appeal for wellness equipment. Notice the badge says 'auto-consensus'. Because the risk fell in an ambiguous middle zone, our system automatically ran a consensus panel of three AI reviewers. They agreed that while the campaign is plausible, it lacks itemized supplier quotes. So it recommends escalating. I'll add a quick note requesting verification documents and confirm."
 
 ---
 
-## STEP 5: Voice Agent & Live Booking (6:30 – 7:30)
+#### 🔴 Case 3: Scam / Policy Violation (REJECT)
+🖱️ **Click:** **"Guaranteed return investment pool"** ($50,000)
+- **AI Recommendation:** `REJECT` (Risk Score: 1.0 — Policy Violation)
+- **AI Rationale:** Blocked immediately by policy rules: contains banned phrases *"guaranteed return"* and *"double your money"*.
 
-📍 **SCREEN:** Switch to Tab 5 (`http://localhost:5174/voice`)
+💡 **How it works (in plain terms):**
+- The system checks strict rule filters before calling expensive AI models.
+- Obvious scam phrases are blocked instantly, and the safety team is alerted right away.
 
-👉 **ACTION:** Show the Voice Agent interface and the **"Recent Bookings"** panel on the right.
+🖱️ **Action:** Click the red **"Reject"** button.
+- In Reason Code, type: `financial_fraud_guaranteed_returns`
+- Click Confirm.
 
-🗣️ **SAY ALOUD:**
-> "The third pillar of OmniRAG is our Voice Agent. We integrate with Retell AI for telephony, speech-to-text, and audio streaming over a high-speed WebSocket. OmniRAG's backend serves as the brain.
->
-> When a customer calls in, the backend identifies whether they're asking FAQ questions or want to book an appointment. If they want to book, our intent extractor captures their service, address, phone number, and name.
->
-> Once confirmed, it writes the booking to our database, triggers our n8n booking workflow to update calendar records, confirms the booking to the caller, and automatically terminates the call."
-
----
-
-## STEP 6: Conclusion (7:30 – 8:00)
-
-📍 **SCREEN:** Back to Tab 1 (`http://localhost:5174/chat`)
-
-🗣️ **SAY ALOUD:**
-> "To wrap up: OmniRAG bridges the gap between RAG retrieval, workflow automation, and production governance. By separating intake into workflows, policy scoring into AI graph pipelines, and final approvals into an RBAC-gated audit ledger, we get full automation speed without sacrificing human accountability.
->
-> Thank you so much for your time, and I look forward to your questions!"
+🗣️ **What to say aloud:**
+> "Our third case is an immediate rejection. Words like 'guaranteed return' and 'double your money' are caught by our automatic policy filters without wasting AI processing time. I click 'Reject', provide the reason code, and it's securely archived."
 
 ---
 
-### 🛠️ Quick Rehearsal Cheat Sheet
+#### 📊 Live Agreement Metric (Top Right)
+🖱️ **What to point to:** The percentage counter in the top-right header: **"AI / human agreement X%"**.
 
-| Step | Tab / URL | Primary Action | Key Talking Point |
-| :--- | :--- | :--- | :--- |
-| **Intro** | Tab 1 (`/chat`) | Introduce OmniRAG | AI with human accountability & automation seams |
-| **RAG** | Tab 1 (`/chat`) | Show Documents, ask FAQ | Vector grounding in Qdrant with citations |
-| **Automation** | Tab 2 (`/automation`) & Tab 3 (`n8n:5678`) | Show pipeline, run Live Webhook query, show n8n canvas | Workflow owns intake & notifications; code owns AI & audit |
-| **RBAC & T&S** | Tab 1 (`/chat`) ➔ Tab 4 (`/moderation`) | Point to Admin badge, review 3 queue items (Approve, Escalate, Reject) | Role claims, route guards, multi-agent consensus, append-only ledger |
-| **Voice** | Tab 5 (`/voice`) | Show Voice Agent & Recent Bookings | Telephony via Retell, WebSocket LLM brain, automated booking |
-| **Outro** | Tab 1 (`/chat`) | Closing recap | Production-grade governance |
+🗣️ **What to say aloud:**
+> "Up here in the header, we track the live agreement rate between our AI recommendations and actual human decisions. This isn't a theoretical test — it measures how reliably the AI assists human reviewers in real daily operations."
+
+---
+
+## STEP 5: AI Voice Agent for Customer Bookings (5:30 – 6:30)
+
+📍 **Where to be:** Switch to Tab 5 (`http://localhost:5174/voice`)
+
+👀 **What you see:**
+- The Voice Agent call screen.
+- On the right side, the **"Recent Bookings"** dashboard showing confirmed appointments.
+
+💡 **How it works (in plain terms):**
+- Customers can call a phone number to ask questions or book a service.
+- The voice AI answers questions conversationally using the document knowledge base.
+- When the caller wants to book an appointment, the AI naturally gathers their **service type, address, phone number, and name**.
+- Once confirmed, it saves the booking to the database, updates the team calendar, confirms with the customer, and hangs up the call.
+
+🗣️ **What to say aloud:**
+> "Finally, we have our Voice Agent. In addition to text and chat, OmniRAG can handle real inbound customer phone calls.
+> 
+> The voice agent answers questions naturally, and when a customer wants to schedule a service, it gathers their details — like their name, service needed, address, and phone number.
+> 
+> Once the customer confirms, the agent records the booking here in the system, triggers our calendar automation, confirms it to the caller, and automatically ends the call. This enables 24/7 automated booking without needing round-the-clock call center staff."
+
+---
+
+## STEP 6: Conclusion (6:30 – 7:00)
+
+📍 **Where to be:** Back to Tab 1 (`http://localhost:5174/chat`)
+
+🗣️ **What to say aloud:**
+> "To recap: OmniRAG delivers the full package for modern AI operations. It grounds answers in real company data, connects workflows to save time, automates customer phone bookings, and crucially, maintains strict human-in-the-loop governance for Trust & Safety.
+> 
+> Thank you so much for watching, and I'd love to answer any questions you have!"
+
+---
+
+### 🎯 Practice Checklist
+
+- [ ] All 5 tabs open and loaded in Chrome.
+- [ ] Logged in as `sadiafarhin62@gmail.com` (green Admin badge visible).
+- [ ] Moderation queue shows 3 items ready (`Riverside Garden`, `Holistic Recovery`, `Guaranteed Return`).
+- [ ] If you ever need to reset the queue: run `python scripts/seed_moderation_queue.py` in your terminal.
+- [ ] Speak naturally, smile, and focus on the business value!
