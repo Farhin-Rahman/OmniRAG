@@ -67,6 +67,34 @@ def init_bookings_db() -> None:
     logger.info(f"Bookings log ready at {DB_PATH}")
 
 
+import re
+
+def _clean_service_text(service: str) -> str:
+    """Normalize service name and remove accidental duplicate phrases like 'plumbing service, plumbing service'."""
+    if not service:
+        return "service"
+    service = service.strip()
+    # Deduplicate comma or slash separated identical phrases
+    parts = [p.strip() for p in re.split(r"[,/|;]+", service) if p.strip()]
+    if parts:
+        seen = set()
+        deduped = []
+        for p in parts:
+            p_lower = p.lower()
+            if p_lower not in seen:
+                seen.add(p_lower)
+                deduped.append(p)
+        service = ", ".join(deduped)
+
+    # Check for direct word-level repetition, e.g. "plumbing service plumbing service"
+    words = service.split()
+    half = len(words) // 2
+    if half >= 1 and [w.lower() for w in words[:half]] == [w.lower() for w in words[half : 2 * half]]:
+        service = " ".join(words[:half])
+
+    return service
+
+
 def record_booking(
     service: str,
     call_id: Optional[str] = None,
@@ -76,9 +104,62 @@ def record_booking(
     preferred_day: Optional[str] = None,
     preferred_time: Optional[str] = None,
 ) -> int:
-    """Insert one booking. Returns the new row id."""
+    """Insert or update one booking. Deduplicates by call_id or recent identical caller."""
+    service = _clean_service_text(service)
     timestamp = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
+        # If a booking for this call_id already exists, update it instead of inserting a duplicate
+        if call_id:
+            existing = conn.execute(
+                "SELECT id FROM bookings WHERE call_id = ?", (call_id,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE bookings
+                    SET service = ?, address = ?, phone = ?, customer_name = ?,
+                        preferred_day = ?, preferred_time = ?, status = 'confirmed'
+                    WHERE id = ?
+                    """,
+                    (
+                        service,
+                        address,
+                        phone,
+                        customer_name,
+                        preferred_day,
+                        preferred_time,
+                        existing[0],
+                    ),
+                )
+                logger.info(
+                    f"Booking updated for existing call: service={service} call_id={call_id} id={existing[0]}"
+                )
+                return existing[0]
+
+        # If a booking with the same phone and customer_name was already inserted recently, update it
+        if phone and customer_name:
+            recent = conn.execute(
+                """
+                SELECT id FROM bookings
+                WHERE phone = ? AND customer_name = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (phone, customer_name),
+            ).fetchone()
+            if recent:
+                conn.execute(
+                    """
+                    UPDATE bookings
+                    SET service = ?, address = ?, preferred_day = ?, preferred_time = ?, status = 'confirmed'
+                    WHERE id = ?
+                    """,
+                    (service, address, preferred_day, preferred_time, recent[0]),
+                )
+                logger.info(
+                    f"Duplicate booking merged: service={service} phone={phone} id={recent[0]}"
+                )
+                return recent[0]
+
         cursor = conn.execute(
             """
             INSERT INTO bookings

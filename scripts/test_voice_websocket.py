@@ -103,26 +103,26 @@ async def main():
         history.append({"role": "agent", "content": answer})
 
         # 2) Booking request with service — asks for address
-        ev = response_required("I want to book a furnace repair", history)
+        ev = response_required("I want to book a plumbing inspection", history)
         history = ev["transcript"]
         answer = await send_turn(ws, ev, "Booking (service specified)")
         history.append({"role": "agent", "content": answer})
 
         # 3) Provide address — asks for phone
-        ev = response_required("My address is 4521 McEwan Road Edmonton", history)
+        ev = response_required("My address is 124 Broadway, Downtown Nashville, Tennessee", history)
         history = ev["transcript"]
         answer = await send_turn(ws, ev, "Booking (address provided)")
         history.append({"role": "agent", "content": answer})
 
         # 4) Provide phone number — asks for name
-        ev = response_required("My phone number is 780 555 0142", history)
+        ev = response_required("My phone number is 615 555 0142", history)
         history = ev["transcript"]
         answer = await send_turn(ws, ev, "Booking (phone provided)")
         history.append({"role": "agent", "content": answer})
 
         # 5) Provide name — completes all required fields, triggers tool_call_invocation,
         #    POSTs to N8N_BOOKING_WEBHOOK_URL, and records the booking in SQLite.
-        ev = response_required("Jane Doe", history)
+        ev = response_required("Jane Smith", history)
         history = ev["transcript"]
         answer = await send_turn(ws, ev, "Booking (name provided & confirmed)")
 

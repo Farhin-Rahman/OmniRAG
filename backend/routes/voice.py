@@ -32,6 +32,7 @@ from db.bookings import (
     list_bookings,
     record_booking,
     record_follow_up_call,
+    _clean_service_text,
 )
 from services.embedding_service import embedding_service
 from services.db.qdrant_service import get_qdrant_service
@@ -740,9 +741,10 @@ async def _handle_turn(
             if details.get("preferred_day")
             else ""
         )
+        clean_service = _clean_service_text(details.get("service") or "service")
         address_str = f" at {details['address']}" if details.get("address") else ""
         content = (
-            f"You're all set for {details.get('service', 'service')}{when}{address_str}. "
+            f"You're all set for {clean_service}{when}{address_str}. "
             f"Thank you for choosing Apex HVAC & Plumbing. Have a great day. Goodbye!"
         )
         state.clear()
