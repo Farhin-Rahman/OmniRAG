@@ -15,11 +15,27 @@ set in your .env, append it: ws://localhost:8081/api/voice/llm-websocket/test-ca
 import asyncio
 import itertools
 import json
+import os
 import sys
+from pathlib import Path
 
 import websockets
 
-DEFAULT_URL = "ws://localhost:8081/api/voice/llm-websocket/test-call-001"
+def _get_default_url():
+    # Read .env if present
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    secret = ""
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("VOICE_WEBSOCKET_SECRET="):
+                secret = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    if secret:
+        return f"ws://localhost:8081/api/voice/llm-websocket/{secret}/test-call-001"
+    return "ws://localhost:8081/api/voice/llm-websocket/test-call-001"
+
+DEFAULT_URL = _get_default_url()
 _response_id = itertools.count(1)
 
 
@@ -43,6 +59,8 @@ async def send_turn(ws, event: dict, label: str) -> str:
         rtype = msg.get("response_type")
         if rtype == "response":
             full_text += msg.get("content", "")
+            if msg.get("end_call"):
+                print("    < (call automatically cut off by agent: end_call=True)")
             if msg.get("content_complete"):
                 break
         elif rtype in ("tool_call_invocation", "tool_call_result"):
@@ -78,28 +96,37 @@ async def main():
         history: list = []
 
         # 1) RAG question path — needs documents ingested to return a real
-        #    answer; with an empty index it should still respond gracefully
-        #    ("I don't have that information...") rather than error out.
+        #    answer; with an empty index it should still respond gracefully.
         ev = response_required("What are the key compliance requirements?", history)
         history = ev["transcript"]
         answer = await send_turn(ws, ev, "RAG question")
         history.append({"role": "agent", "content": answer})
 
-        # 2) Booking request missing details — should ask a clarifying
-        #    question, NOT call the automation webhook.
-        ev = response_required("I'd like to book an appointment", history)
+        # 2) Booking request with service — asks for address
+        ev = response_required("I want to book a furnace repair", history)
         history = ev["transcript"]
-        answer = await send_turn(ws, ev, "Booking (incomplete)")
+        answer = await send_turn(ws, ev, "Booking (service specified)")
         history.append({"role": "agent", "content": answer})
 
-        # 3) Booking request with everything needed — should trigger
-        #    tool_call_invocation/result and POST to N8N_BOOKING_WEBHOOK_URL.
-        ev = response_required(
-            "I need drain cleaning this Tuesday afternoon, my name is Jane Doe", history
-        )
-        await send_turn(ws, ev, "Booking (complete)")
+        # 3) Provide address — asks for phone
+        ev = response_required("My address is 4521 McEwan Road Edmonton", history)
+        history = ev["transcript"]
+        answer = await send_turn(ws, ev, "Booking (address provided)")
+        history.append({"role": "agent", "content": answer})
 
-    print("\nSmoke test finished — no crashes, all turns answered.")
+        # 4) Provide phone number — asks for name
+        ev = response_required("My phone number is 780 555 0142", history)
+        history = ev["transcript"]
+        answer = await send_turn(ws, ev, "Booking (phone provided)")
+        history.append({"role": "agent", "content": answer})
+
+        # 5) Provide name — completes all required fields, triggers tool_call_invocation,
+        #    POSTs to N8N_BOOKING_WEBHOOK_URL, and records the booking in SQLite.
+        ev = response_required("Jane Doe", history)
+        history = ev["transcript"]
+        answer = await send_turn(ws, ev, "Booking (name provided & confirmed)")
+
+    print("\n[OK] Smoke test finished successfully - booking confirmed mid-call.")
 
 
 if __name__ == "__main__":

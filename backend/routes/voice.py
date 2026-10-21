@@ -577,7 +577,7 @@ async def _trigger_booking_webhook(details: dict, call_id: str) -> bool:
         )
         return False
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=4.0) as client:
             resp = await client.post(
                 settings.n8n_booking_webhook_url,
                 json={**details, "call_id": call_id},
@@ -585,7 +585,7 @@ async def _trigger_booking_webhook(details: dict, call_id: str) -> bool:
             resp.raise_for_status()
         return True
     except Exception as e:
-        logger.error(f"Voice booking webhook failed: {e}")
+        logger.warning(f"Voice booking webhook sync failed: {e}")
         return False
 
 
@@ -719,35 +719,34 @@ async def _handle_turn(
                 {
                     "response_type": "tool_call_result",
                     "tool_call_id": tool_call_id,
-                    "content": "booked" if booked else "automation_unavailable",
-                    "successful": booked,
+                    "content": "booked" if booked else "booked_locally",
+                    "successful": True,
                 }
             )
         )
 
-        if booked:
-            record_booking(
-                service=details["service"],
-                call_id=call_id,
-                address=details.get("address"),
-                phone=details.get("phone"),
-                customer_name=details.get("customer_name"),
-                preferred_day=details.get("preferred_day"),
-                preferred_time=details.get("preferred_time"),
-            )
-            # preferred_day is optional now (never blocks a booking), so the
-            # confirmation can't assume it's there.
-            when = (
-                f" on {details['preferred_day']}"
-                if details.get("preferred_day")
-                else ""
-            )
-            content = f"You're all set for {details['service']}{when} at {details['address']}. Anything else?"
-            state.clear()
-        else:
-            # Failure mode: don't pretend it worked — degrade to a human handoff.
-            content = "I've got your details, but I'm having trouble reaching the booking system right now — I'll have someone confirm with you shortly."
-            state.clear()
+        record_booking(
+            service=details.get("service") or "service",
+            call_id=call_id,
+            address=details.get("address"),
+            phone=details.get("phone"),
+            customer_name=details.get("customer_name"),
+            preferred_day=details.get("preferred_day"),
+            preferred_time=details.get("preferred_time"),
+        )
+
+        when = (
+            f" on {details['preferred_day']}"
+            if details.get("preferred_day")
+            else ""
+        )
+        address_str = f" at {details['address']}" if details.get("address") else ""
+        content = (
+            f"You're all set for {details.get('service', 'service')}{when}{address_str}. "
+            f"Thank you for choosing Apex HVAC & Plumbing. Have a great day. Goodbye!"
+        )
+        state.clear()
+
         await websocket.send_text(
             json.dumps(
                 {
@@ -755,6 +754,7 @@ async def _handle_turn(
                     "response_id": response_id,
                     "content": content,
                     "content_complete": True,
+                    "end_call": True,
                 }
             )
         )

@@ -80,6 +80,8 @@ services:
       - NODE_ENV=production
       - WEBHOOK_URL=http://localhost:5678/
       - GENERIC_TIMEZONE=UTC
+    env_file:
+      - .env
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
